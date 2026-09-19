@@ -1,0 +1,65 @@
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=DM+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg:   #F0F4FB; --surf: #FFFFFF; --s2: #E6EDF8; --bd: #CDD8EE;
+  --tx:   #0C1628; --t2:  #4A5E80; --t3: #8CA0C0;
+  --am:   #C67900; --am-s:#FFF3D6; --am-t:#7A4A00;
+  --gr:   #0B8A5A; --gr-s:#D2F3E6; --gr-t:#065038;
+  --in:   #3E32BE; --in-s:#ECEAFF; --in-t:#2A1E94;
+  --rd:   #C22020; --rd-s:#FFEBEB; --rd-t:#7A1010;
+  --f:    'DM Sans', system-ui, sans-serif;
+  --ff:   'Sora', system-ui, sans-serif;
+  --mo:   'DM Mono', 'Courier New', monospace;
+  --sh:   0 1px 3px rgba(12,22,40,.06), 0 1px 2px rgba(12,22,40,.04);
+  --sh2:  0 8px 28px rgba(12,22,40,.13);
+  --r:    .18s ease;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:#060C18; --surf:#0B1522; --s2:#111D2E; --bd:#192940;
+    --tx:#CAD8F4; --t2:#5A7AA8; --t3:#2E4860;
+    --am:#F0A020; --am-s:#221602; --am-t:#FBBF47;
+    --gr:#0EC480; --gr-s:#041610; --gr-t:#58E0B0;
+    --in:#706AF0; --in-s:#120E44; --in-t:#AFAAFF;
+    --rd:#E03C3C; --rd-s:#1C0808; --rd-t:#F48888;
+    --sh:0 1px 4px rgba(0,0,0,.4); --sh2:0 8px 32px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"] {
+  --bg:#060C18; --surf:#0B1522; --s2:#111D2E; --bd:#192940;
+  --tx:#CAD8F4; --t2:#5A7AA8; --t3:#2E4860;
+  --am:#F0A020; --am-s:#221602; --am-t:#FBBF47;
+  --gr:#0EC480; --gr-s:#041610; --gr-t:#58E0B0;
+  --in:#706AF0; --in-s:#120E44; --in-t:#AFAAFF;
+  --rd:#E03C3C; --rd-s:#1C0808; --rd-t:#F48888;
+  --sh:0 1px 4px rgba(0,0,0,.4); --sh2:0 8px 32px rgba(0,0,0,.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { height: 100%; margin: 0; }
+
+body {
+  font-family: var(--f);
+  background: var(--bg);
+  color: var(--tx);
+  font-size: 13.5px;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+button { cursor: pointer; font-family: var(--f); }
+input, textarea, select { font-family: var(--f); }
+
+/* scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bd); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--t3); }
