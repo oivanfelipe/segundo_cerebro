@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { chatWithContext, transcribeAudioNote } from '@/lib/groq'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()

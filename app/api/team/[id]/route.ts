@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const body = await req.json()
   const { data, error } = await supabase

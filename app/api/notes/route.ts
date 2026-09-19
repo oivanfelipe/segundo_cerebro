@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const { data, error } = await supabase.from('client_notes').insert(body).select().single()

@@ -3,6 +3,8 @@ import { supabase } from '@/lib/supabase'
 import { listDriveFiles, readDocContent } from '@/lib/google'
 import { analyzeMeeting } from '@/lib/groq'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST() {
   try {
     const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID!

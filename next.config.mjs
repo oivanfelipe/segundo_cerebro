@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  serverExternalPackages: ['googleapis', 'groq-sdk'],
+  experimental: {
+    serverComponentsExternalPackages: ['googleapis', 'groq-sdk'],
+  },
 };
 
 export default nextConfig;
