@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic'
 export async function POST() {
   try {
     const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID!
+    console.log(`[sync] iniciando. GOOGLE_DRIVE_FOLDER_ID=${folderId}`)
 
     // Get already-processed folder IDs
     const { data: processed } = await supabase
@@ -23,6 +24,7 @@ export async function POST() {
       : await listMeetingFolders(folderId)
 
     const newFolders = folders.filter((f: any) => !processedIds.has(f.id))
+    console.log(`[sync] total pastas=${folders.length} processedIds=${processedIds.size} novas=${newFolders.length}`)
 
     if (newFolders.length === 0) {
       return NextResponse.json({ synced: 0, message: 'Nenhuma reunião nova encontrada.' })

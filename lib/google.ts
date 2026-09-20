@@ -32,9 +32,13 @@ export async function listMeetingFolders(folderId: string, since?: string) {
     fields: 'files(id,name,createdTime)',
     orderBy: 'createdTime desc',
     pageSize: 100,
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
   })
 
-  return res.data.files || []
+  const files = res.data.files || []
+  console.log(`[listMeetingFolders] folderId=${folderId} since=${since} → ${files.length} pastas encontradas`)
+  return files
 }
 
 // Finds the transcription doc inside a meeting folder (resolves shortcuts)
@@ -48,9 +52,12 @@ export async function findTranscriptionDoc(
     q: `'${folderId}' in parents and trashed=false`,
     fields: 'files(id,name,mimeType,shortcutDetails)',
     pageSize: 20,
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
   })
 
   const files = res.data.files || []
+  console.log(`[findTranscriptionDoc] folderId=${folderId} → ${files.length} arquivos: ${files.map((f: any) => `${f.name}(${f.mimeType})`).join(', ')}`)
 
   for (const file of files) {
     // Direct Google Doc in folder
