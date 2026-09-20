@@ -9,15 +9,18 @@ export async function POST() {
   try {
     const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID!
 
-    // Fetch all docs from Drive folder
-    const driveFiles = await listDriveFiles(folderId)
-
     // Get already-processed doc IDs
     const { data: processed } = await supabase
       .from('processed_docs')
       .select('doc_id')
 
     const processedIds = new Set((processed || []).map((r: any) => r.doc_id))
+
+    // On first sync (no processed docs yet), restrict to last week only
+    const isFirstSync = processedIds.size === 0
+    const driveFiles = isFirstSync
+      ? await listDriveFiles(folderId, '2026-09-14T00:00:00')
+      : await listDriveFiles(folderId)
 
     const newFiles = driveFiles.filter((f: any) => !processedIds.has(f.id))
 

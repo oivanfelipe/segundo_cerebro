@@ -17,12 +17,17 @@ function getAuth() {
   })
 }
 
-export async function listDriveFiles(folderId: string) {
+export async function listDriveFiles(folderId: string, since?: string) {
   const auth = getAuth()
   const drive = google.drive({ version: 'v3', auth })
 
+  let q = `'${folderId}' in parents and mimeType='application/vnd.google-apps.document' and trashed=false`
+  if (since) {
+    q += ` and modifiedTime >= '${since}'`
+  }
+
   const res = await drive.files.list({
-    q: `'${folderId}' in parents and mimeType='application/vnd.google-apps.document' and trashed=false`,
+    q,
     fields: 'files(id,name,createdTime,modifiedTime)',
     orderBy: 'createdTime desc',
     pageSize: 100,
