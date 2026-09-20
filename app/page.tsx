@@ -120,7 +120,8 @@ export default function Home() {
       const res = await fetch('/api/sync', { method: 'POST' })
       const data = await res.json()
       if (data.error) setSyncMsg(`Erro: ${data.error}`)
-      else setSyncMsg(`${data.synced} reunião(ões) sincronizada(s), ${data.tasks_created} tarefa(s) criada(s)`)
+      else if (data.message) setSyncMsg(data.message)
+      else setSyncMsg(`${data.synced} reunião(ões) sincronizada(s), ${data.tasks_created ?? 0} tarefa(s) criada(s)`)
       await loadAll()
     } catch (e: any) {
       setSyncMsg(`Erro: ${e.message}`)

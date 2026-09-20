@@ -19,7 +19,7 @@ export async function POST() {
     // On first sync (no processed docs yet), restrict to last week only
     const isFirstSync = processedIds.size === 0
     const driveFiles = isFirstSync
-      ? await listDriveFiles(folderId, '2026-09-14T00:00:00')
+      ? await listDriveFiles(folderId, '2026-09-14T00:00:00Z')
       : await listDriveFiles(folderId)
 
     const newFiles = driveFiles.filter((f: any) => !processedIds.has(f.id))
