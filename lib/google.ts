@@ -17,23 +17,56 @@ function getAuth() {
   })
 }
 
-export async function listDriveFiles(folderId: string, since?: string) {
+// Lists meeting subfolders inside the root folder, optionally filtered by createdTime
+export async function listMeetingFolders(folderId: string, since?: string) {
   const auth = getAuth()
   const drive = google.drive({ version: 'v3', auth })
 
-  let q = `'${folderId}' in parents and mimeType='application/vnd.google-apps.document' and trashed=false`
+  let q = `'${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
   if (since) {
-    q += ` and modifiedTime >= '${since}'`
+    q += ` and createdTime >= '${since}'`
   }
 
   const res = await drive.files.list({
     q,
-    fields: 'files(id,name,createdTime,modifiedTime)',
+    fields: 'files(id,name,createdTime)',
     orderBy: 'createdTime desc',
     pageSize: 100,
   })
 
   return res.data.files || []
+}
+
+// Finds the transcription doc inside a meeting folder (resolves shortcuts)
+export async function findTranscriptionDoc(
+  folderId: string
+): Promise<{ id: string; name: string } | null> {
+  const auth = getAuth()
+  const drive = google.drive({ version: 'v3', auth })
+
+  const res = await drive.files.list({
+    q: `'${folderId}' in parents and trashed=false`,
+    fields: 'files(id,name,mimeType,shortcutDetails)',
+    pageSize: 20,
+  })
+
+  const files = res.data.files || []
+
+  for (const file of files) {
+    // Direct Google Doc in folder
+    if (file.mimeType === 'application/vnd.google-apps.document') {
+      return { id: file.id!, name: file.name! }
+    }
+    // Shortcut pointing to a Google Doc (e.g. "Anotações do Gemini")
+    if (file.mimeType === 'application/vnd.google-apps.shortcut') {
+      const details = (file as any).shortcutDetails
+      if (details?.targetId && details?.targetMimeType === 'application/vnd.google-apps.document') {
+        return { id: details.targetId, name: file.name! }
+      }
+    }
+  }
+
+  return null
 }
 
 export async function readDocContent(docId: string): Promise<string> {
