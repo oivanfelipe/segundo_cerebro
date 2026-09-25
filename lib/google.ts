@@ -1,4 +1,5 @@
 import { google } from 'googleapis'
+import JSZip from 'jszip'
 
 function getAuth() {
   const privateKey = (process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '')
@@ -17,63 +18,53 @@ function getAuth() {
   })
 }
 
-// Lists meeting subfolders inside the root folder, optionally filtered by createdTime
-export async function listMeetingFolders(folderId: string, since?: string) {
+const GDOC_MIME_TYPE = 'application/vnd.google-apps.document'
+const DOCX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
+export interface TranscriptionDoc {
+  id: string
+  name: string
+  mimeType: string
+  createdTime?: string
+}
+
+// Finds transcription docs (native Google Docs or real .docx exports) anywhere
+// in the client Shared Drive, matching how meeting-note files are actually
+// named there ("... - Anotações do Gemini[.docx]" or "Ata_...docx").
+export async function listTranscriptionDocs(
+  sharedDriveId: string,
+  since?: string
+): Promise<TranscriptionDoc[]> {
   const auth = getAuth()
   const drive = google.drive({ version: 'v3', auth })
 
-  let q = `'${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
+  let q = `trashed=false and (mimeType='${GDOC_MIME_TYPE}' or mimeType='${DOCX_MIME_TYPE}') and (name contains 'Anotações do Gemini' or name contains 'Ata_')`
   if (since) {
     q += ` and createdTime >= '${since}'`
   }
 
-  const res = await drive.files.list({
-    q,
-    fields: 'files(id,name,createdTime)',
-    orderBy: 'createdTime desc',
-    pageSize: 100,
-    supportsAllDrives: true,
-    includeItemsFromAllDrives: true,
-  })
+  const files: TranscriptionDoc[] = []
+  let pageToken: string | undefined
 
-  const files = res.data.files || []
-  console.log(`[listMeetingFolders] folderId=${folderId} since=${since} → ${files.length} pastas encontradas`)
+  do {
+    const res = await drive.files.list({
+      q,
+      corpora: 'drive',
+      driveId: sharedDriveId,
+      includeItemsFromAllDrives: true,
+      supportsAllDrives: true,
+      fields: 'nextPageToken, files(id,name,mimeType,createdTime)',
+      orderBy: 'createdTime',
+      pageSize: 100,
+      pageToken,
+    })
+
+    files.push(...((res.data.files || []) as TranscriptionDoc[]))
+    pageToken = res.data.nextPageToken || undefined
+  } while (pageToken)
+
+  console.log(`[listTranscriptionDocs] driveId=${sharedDriveId} since=${since} → ${files.length} transcrições encontradas`)
   return files
-}
-
-// Finds the transcription doc inside a meeting folder (resolves shortcuts)
-export async function findTranscriptionDoc(
-  folderId: string
-): Promise<{ id: string; name: string } | null> {
-  const auth = getAuth()
-  const drive = google.drive({ version: 'v3', auth })
-
-  const res = await drive.files.list({
-    q: `'${folderId}' in parents and trashed=false`,
-    fields: 'files(id,name,mimeType,shortcutDetails)',
-    pageSize: 20,
-    supportsAllDrives: true,
-    includeItemsFromAllDrives: true,
-  })
-
-  const files = res.data.files || []
-  console.log(`[findTranscriptionDoc] folderId=${folderId} → ${files.length} arquivos: ${files.map((f: any) => `${f.name}(${f.mimeType})`).join(', ')}`)
-
-  for (const file of files) {
-    // Direct Google Doc in folder
-    if (file.mimeType === 'application/vnd.google-apps.document') {
-      return { id: file.id!, name: file.name! }
-    }
-    // Shortcut pointing to a Google Doc (e.g. "Anotações do Gemini")
-    if (file.mimeType === 'application/vnd.google-apps.shortcut') {
-      const details = (file as any).shortcutDetails
-      if (details?.targetId && details?.targetMimeType === 'application/vnd.google-apps.document') {
-        return { id: details.targetId, name: file.name! }
-      }
-    }
-  }
-
-  return null
 }
 
 export async function readDocContent(docId: string): Promise<string> {
@@ -89,6 +80,41 @@ export async function readDocContent(docId: string): Promise<string> {
     .join('')
 
   return text.trim()
+}
+
+// Reads a real .docx file (OOXML zip) by downloading its bytes via Drive and
+// extracting the text runs from word/document.xml — the Docs API can't open these.
+export async function readDocxContent(fileId: string): Promise<string> {
+  const auth = getAuth()
+  const drive = google.drive({ version: 'v3', auth })
+
+  const res = await drive.files.get(
+    { fileId, alt: 'media', supportsAllDrives: true },
+    { responseType: 'arraybuffer' }
+  )
+
+  const zip = await JSZip.loadAsync(res.data as ArrayBuffer)
+  const xml = await zip.file('word/document.xml')?.async('string')
+  if (!xml) return ''
+
+  return xml
+    .split('</w:p>')
+    .map((paragraph) =>
+      Array.from(paragraph.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g), (m) => m[1]).join('')
+    )
+    .join('\n')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .trim()
+}
+
+export async function readTranscriptionContent(doc: TranscriptionDoc): Promise<string> {
+  return doc.mimeType === GDOC_MIME_TYPE
+    ? readDocContent(doc.id)
+    : readDocxContent(doc.id)
 }
 
 export async function readSheetClients(sheetId: string): Promise<string[]> {
