@@ -1,16 +1,22 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { listMeetingFolders, findTranscriptionDoc, readDocContent } from '@/lib/google'
+import { listTranscriptionDocs, readTranscriptionContent } from '@/lib/google'
 import { analyzeMeeting } from '@/lib/groq'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
+
+// Caps how many transcriptions are analyzed per invocation so a large backlog
+// can't blow past the serverless function timeout or Groq rate limits —
+// running the sync again picks up where it left off.
+const BATCH_LIMIT = 15
 
 export async function POST() {
   try {
-    const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID!
-    console.log(`[sync] iniciando. GOOGLE_DRIVE_FOLDER_ID=${folderId}`)
+    const sharedDriveId = process.env.GOOGLE_SHARED_DRIVE_ID!
+    console.log(`[sync] iniciando. GOOGLE_SHARED_DRIVE_ID=${sharedDriveId}`)
 
-    // Get already-processed folder IDs
+    // Get already-processed doc IDs
     const { data: processed } = await supabase
       .from('processed_docs')
       .select('doc_id')
@@ -19,15 +25,17 @@ export async function POST() {
 
     // On first sync (no processed docs yet), restrict to last week only
     const isFirstSync = processedIds.size === 0
-    const folders = isFirstSync
-      ? await listMeetingFolders(folderId, '2026-09-14T00:00:00Z')
-      : await listMeetingFolders(folderId)
+    const docs = isFirstSync
+      ? await listTranscriptionDocs(sharedDriveId, '2026-09-14T00:00:00Z')
+      : await listTranscriptionDocs(sharedDriveId)
 
-    const newFolders = folders.filter((f: any) => !processedIds.has(f.id))
-    console.log(`[sync] total pastas=${folders.length} processedIds=${processedIds.size} novas=${newFolders.length}`)
+    const newDocs = docs
+      .filter((d) => !processedIds.has(d.id))
+      .slice(0, BATCH_LIMIT)
+    console.log(`[sync] total transcrições=${docs.length} processedIds=${processedIds.size} novas=${newDocs.length}`)
 
-    if (newFolders.length === 0) {
-      return NextResponse.json({ synced: 0, message: 'Nenhuma reunião nova encontrada.' })
+    if (newDocs.length === 0) {
+      return NextResponse.json({ synced: 0, message: 'Nenhuma transcrição nova encontrada.' })
     }
 
     // Get known clients from Supabase
@@ -43,26 +51,13 @@ export async function POST() {
     let totalTasks = 0
     const errors: string[] = []
 
-    for (const folder of newFolders) {
+    for (const doc of newDocs) {
       try {
-        // Find the transcription doc inside this meeting folder
-        const doc = await findTranscriptionDoc(folder.id as string)
-
-        if (!doc) {
-          // No transcription found — mark folder as processed to skip next time
-          await supabase.from('processed_docs').insert({
-            doc_id: folder.id,
-            doc_name: folder.name,
-            tasks_extracted: 0,
-          })
-          continue
-        }
-
-        const content = await readDocContent(doc.id)
+        const content = await readTranscriptionContent(doc)
         if (!content || content.length < 100) {
           await supabase.from('processed_docs').insert({
-            doc_id: folder.id,
-            doc_name: folder.name,
+            doc_id: doc.id,
+            doc_name: doc.name,
             tasks_extracted: 0,
           })
           continue
@@ -75,7 +70,7 @@ export async function POST() {
           .from('call_summaries')
           .insert({
             doc_id: doc.id,
-            doc_name: folder.name,
+            doc_name: doc.name,
             summary: analysis.overall_summary,
             participants: analysis.participants,
             key_points: analysis.clients.flatMap((c) => c.key_decisions).slice(0, 10),
@@ -102,7 +97,7 @@ export async function POST() {
             .insert({
               call_summary_id: callSummary?.id || null,
               client_id: clientId,
-              doc_name: folder.name,
+              doc_name: doc.name,
               meeting_date: analysis.meeting_date,
               key_decisions: clientData.key_decisions,
               open_items: clientData.action_items.map((a) => a.title),
@@ -124,24 +119,27 @@ export async function POST() {
           }
         }
 
-        // Mark folder as processed
+        // Mark doc as processed
         await supabase.from('processed_docs').insert({
-          doc_id: folder.id,
-          doc_name: folder.name,
+          doc_id: doc.id,
+          doc_name: doc.name,
           tasks_extracted: docTaskCount,
         })
 
         totalSynced++
         totalTasks += docTaskCount
       } catch (err: any) {
-        errors.push(`${folder.name}: ${err.message}`)
+        errors.push(`${doc.name}: ${err.message}`)
       }
     }
+
+    const remaining = docs.filter((d) => !processedIds.has(d.id)).length - newDocs.length
 
     return NextResponse.json({
       synced: totalSynced,
       tasks_created: totalTasks,
-      skipped: newFolders.length - totalSynced,
+      skipped: newDocs.length - totalSynced,
+      remaining,
       errors,
     })
   } catch (err: any) {
