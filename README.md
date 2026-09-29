@@ -18,7 +18,10 @@ Esquema de Backend, Plano de Implementação).
 
 ## Setup
 
-1. **Supabase**: crie um projeto e aplique `supabase/migrations/0001_init.sql`.
+1. **Supabase**: o projeto de produção (`task-chat`, compartilhado com outros apps
+   pessoais) já foi migrado — ver `supabase/migrations/0002_adapt_task_chat_project.sql`.
+   URL: `https://lbqmanwfgnhugjefluzy.supabase.co`. Para um projeto novo do zero, aplique
+   `supabase/migrations/0001_init.sql`.
 2. **Google Cloud**: crie uma Service Account com acesso de leitura ao Drive API e ao
    Docs API. Compartilhe a pasta raiz de reuniões do Drive com o e-mail da service
    account.
