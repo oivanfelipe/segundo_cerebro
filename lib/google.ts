@@ -1,8 +1,7 @@
 import { google } from 'googleapis'
 
 function getAuth() {
-  const privateKey = (process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '')
-    .replace(/\\n/g, '\n')
+  const privateKey = (process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '').replace(/\\n/g, '\n')
 
   return new google.auth.GoogleAuth({
     credentials: {
@@ -11,14 +10,15 @@ function getAuth() {
     },
     scopes: [
       'https://www.googleapis.com/auth/drive.readonly',
-      'https://www.googleapis.com/auth/spreadsheets.readonly',
       'https://www.googleapis.com/auth/documents.readonly',
     ],
   })
 }
 
+export type DriveFolder = { id: string; name: string; createdTime?: string | null }
+
 // Lists meeting subfolders inside the root folder, optionally filtered by createdTime
-export async function listMeetingFolders(folderId: string, since?: string) {
+export async function listMeetingFolders(folderId: string, since?: string): Promise<DriveFolder[]> {
   const auth = getAuth()
   const drive = google.drive({ version: 'v3', auth })
 
@@ -36,9 +36,7 @@ export async function listMeetingFolders(folderId: string, since?: string) {
     includeItemsFromAllDrives: true,
   })
 
-  const files = res.data.files || []
-  console.log(`[listMeetingFolders] folderId=${folderId} since=${since} → ${files.length} pastas encontradas`)
-  return files
+  return (res.data.files || []) as DriveFolder[]
 }
 
 // Finds the transcription doc inside a meeting folder (resolves shortcuts)
@@ -57,16 +55,13 @@ export async function findTranscriptionDoc(
   })
 
   const files = res.data.files || []
-  console.log(`[findTranscriptionDoc] folderId=${folderId} → ${files.length} arquivos: ${files.map((f: any) => `${f.name}(${f.mimeType})`).join(', ')}`)
 
   for (const file of files) {
-    // Direct Google Doc in folder
     if (file.mimeType === 'application/vnd.google-apps.document') {
       return { id: file.id!, name: file.name! }
     }
-    // Shortcut pointing to a Google Doc (e.g. "Anotações do Gemini")
     if (file.mimeType === 'application/vnd.google-apps.shortcut') {
-      const details = (file as any).shortcutDetails
+      const details = file.shortcutDetails
       if (details?.targetId && details?.targetMimeType === 'application/vnd.google-apps.document') {
         return { id: details.targetId, name: file.name! }
       }
@@ -84,26 +79,9 @@ export async function readDocContent(docId: string): Promise<string> {
   const body = res.data.body?.content || []
 
   const text = body
-    .flatMap((el: any) => el.paragraph?.elements || [])
-    .map((el: any) => el.textRun?.content || '')
+    .flatMap((el) => el.paragraph?.elements || [])
+    .map((el) => el.textRun?.content || '')
     .join('')
 
   return text.trim()
-}
-
-export async function readSheetClients(sheetId: string): Promise<string[]> {
-  const auth = getAuth()
-  const sheets = google.sheets({ version: 'v4', auth })
-
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: sheetId,
-    range: 'A:A',
-  })
-
-  const rows = res.data.values || []
-  return rows
-    .flat()
-    .map((v: string) => v.trim())
-    .filter(Boolean)
-    .slice(1) // skip header row
 }

@@ -5,48 +5,59 @@ export const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || 'placeholder-
 export const MODEL = 'llama-3.3-70b-versatile'
 
 export interface MeetingAnalysis {
+  overall_summary: string
+  participants: string | null
+  meeting_date: string | null
   clients: {
     name: string
-    summary: string
+    context_summary: string
     key_decisions: string[]
-    action_items: { title: string; priority: 'alta' | 'media' | 'baixa'; deadline?: string }[]
+    open_items: string[]
   }[]
-  participants: string
-  meeting_date: string | null
-  overall_summary: string
 }
 
+function extractJson<T>(raw: string): T {
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    const match = raw.match(/\{[\s\S]*\}/)
+    if (match) return JSON.parse(match[0]) as T
+    throw new Error('Groq retornou um JSON inválido')
+  }
+}
+
+// Analisa o conteúdo de uma reunião: resumo geral + clientes mencionados (toda reunião é
+// escaneada por conteúdo, sem distinção entre reunião "interna" e "de cliente" — ver PRD).
 export async function analyzeMeeting(
-  transcriptText: string,
+  content: string,
   knownClients: string[]
 ): Promise<MeetingAnalysis> {
-  const prompt = `Você é um assistente especializado em marketing de performance. Analise a transcrição de reunião abaixo e extraia informações estruturadas.
+  const prompt = `Você é um assistente que organiza o histórico de reuniões de um profissional de growth/marketing que atende múltiplos clientes de agência.
 
-Clientes conhecidos: ${knownClients.join(', ')}
+Analise o conteúdo de reunião abaixo (pode incluir participantes, resumo, decisões, próximas etapas e transcrição bruta) e extraia informações estruturadas.
 
-Transcrição:
-${transcriptText.slice(0, 80000)}
+Lista de clientes conhecidos (a reunião pode mencionar zero, um ou vários destes clientes — nunca invente um cliente fora desta lista):
+${knownClients.join(', ')}
+
+Conteúdo da reunião:
+${content.slice(0, 100000)}
 
 Retorne APENAS um JSON válido (sem markdown, sem explicação) com esta estrutura exata:
 {
+  "overall_summary": "resumo geral da reunião inteira, 2-4 frases",
+  "participants": "lista de participantes separados por vírgula, ou null",
+  "meeting_date": "YYYY-MM-DD ou null",
   "clients": [
     {
-      "name": "nome do cliente conforme lista conhecida",
-      "summary": "resumo do que foi discutido sobre este cliente (2-4 frases)",
-      "key_decisions": ["decisão 1", "decisão 2"],
-      "action_items": [
-        {
-          "title": "o que precisa ser feito (ação clara e objetiva)",
-          "priority": "alta|media|baixa",
-          "deadline": "YYYY-MM-DD ou null"
-        }
-      ]
+      "name": "nome do cliente EXATAMENTE como está na lista conhecida",
+      "context_summary": "o que foi discutido especificamente sobre este cliente (2-4 frases, só a parte relevante a ele)",
+      "key_decisions": ["decisão 1 sobre este cliente", "decisão 2"],
+      "open_items": ["pendência/próxima etapa 1 sobre este cliente"]
     }
-  ],
-  "participants": "lista de participantes separados por vírgula",
-  "meeting_date": "YYYY-MM-DD ou null",
-  "overall_summary": "resumo geral da reunião em 1-2 frases"
-}`
+  ]
+}
+
+Se nenhum cliente da lista foi mencionado, retorne "clients": [].`
 
   const completion = await groq.chat.completions.create({
     model: MODEL,
@@ -56,51 +67,50 @@ Retorne APENAS um JSON válido (sem markdown, sem explicação) com esta estrutu
   })
 
   const raw = completion.choices[0]?.message?.content || '{}'
-
-  try {
-    return JSON.parse(raw) as MeetingAnalysis
-  } catch {
-    const match = raw.match(/\{[\s\S]*\}/)
-    if (match) return JSON.parse(match[0]) as MeetingAnalysis
-    throw new Error('Groq returned invalid JSON')
-  }
+  return extractJson<MeetingAnalysis>(raw)
 }
 
-export async function chatWithContext(
-  question: string,
-  context: string
+export interface ClientHistoryEntry {
+  meeting_date: string | null
+  context_summary: string
+  key_decisions: string[]
+  open_items: string[]
+}
+
+// Reescreve o resumo geral acumulado de um cliente a partir de todo o histórico de
+// reuniões conhecido até agora (chamado sempre que um novo insight é criado ou reatribuído).
+export async function regenerateAccumulatedSummary(
+  clientName: string,
+  history: ClientHistoryEntry[]
 ): Promise<string> {
+  if (history.length === 0) return ''
+
+  const sorted = [...history].sort((a, b) =>
+    (a.meeting_date || '').localeCompare(b.meeting_date || '')
+  )
+
+  const historyText = sorted
+    .map(
+      (h) =>
+        `[${h.meeting_date || 'data desconhecida'}] ${h.context_summary}\nDecisões: ${
+          h.key_decisions.join('; ') || 'nenhuma'
+        }\nPendências: ${h.open_items.join('; ') || 'nenhuma'}`
+    )
+    .join('\n\n')
+
+  const prompt = `Você mantém um resumo geral vivo do cliente "${clientName}" para um profissional de growth/marketing que precisa se atualizar rapidamente antes de uma reunião.
+
+Histórico de reuniões deste cliente, em ordem cronológica:
+${historyText}
+
+Escreva um resumo geral acumulado (4-8 frases) que capture: o estado atual do relacionamento/projeto, os principais temas recorrentes, decisões que ainda valem hoje (ignore decisões claramente substituídas por decisões posteriores) e pendências ainda em aberto. Não liste reunião por reunião — sintetize. Responda só com o texto do resumo, sem markdown, sem título.`
+
   const completion = await groq.chat.completions.create({
     model: MODEL,
-    messages: [
-      {
-        role: 'system',
-        content: `Você é o assistente de marketing do Ivan Felipe. Responda de forma direta, objetiva e prática sobre clientes, tarefas e reuniões. Use os dados fornecidos como contexto. Sempre em português.`,
-      },
-      {
-        role: 'user',
-        content: `Contexto atual:\n${context}\n\nPergunta: ${question}`,
-      },
-    ],
-    temperature: 0.4,
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.3,
     max_tokens: 1024,
   })
 
-  return completion.choices[0]?.message?.content || 'Sem resposta.'
-}
-
-export async function transcribeAudioNote(text: string, clientName: string): Promise<string> {
-  const completion = await groq.chat.completions.create({
-    model: MODEL,
-    messages: [
-      {
-        role: 'user',
-        content: `Organize e estruture esta nota sobre o cliente "${clientName}" de forma clara e objetiva. Mantenha todas as informações relevantes. Texto original: ${text}`,
-      },
-    ],
-    temperature: 0.3,
-    max_tokens: 512,
-  })
-
-  return completion.choices[0]?.message?.content || text
+  return completion.choices[0]?.message?.content?.trim() || ''
 }

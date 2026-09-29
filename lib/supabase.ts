@@ -1,75 +1,54 @@
 import { createClient } from '@supabase/supabase-js'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co'
-const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
+const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
 
 export const supabase = createClient(url, key)
+
+export type ClientStatus = 'active' | 'paused'
 
 export type Client = {
   id: string
   name: string
-  segment: string | null
-  services: string[]
-  status: 'active' | 'paused'
-  notes: string | null
   contact: string | null
-  phone: string | null
-  budget: string | null
-  tag: string | null
+  segment: string | null
+  status: ClientStatus
+  accumulated_summary: string | null
+  accumulated_summary_updated_at: string | null
   created_at: string
+  updated_at: string
 }
 
-export type Task = {
+export type ProcessedDocStatus = 'processed' | 'no_transcript' | 'error'
+
+export type ProcessedDoc = {
   id: string
-  title: string
-  description: string | null
-  priority: 'alta' | 'media' | 'baixa'
-  deadline: string | null
-  status: 'pendente' | 'em_andamento' | 'concluida'
-  responsible: string | null
-  meeting_insight_id: string | null
-  client_id: string | null
-  notes: string | null
-  created_at: string
+  folder_id: string
+  folder_name: string
+  status: ProcessedDocStatus
+  error_message: string | null
+  processed_at: string
 }
 
-export type MeetingInsight = {
+export type MeetingSummary = {
   id: string
-  call_summary_id: string | null
-  client_id: string | null
+  processed_doc_id: string
   doc_name: string
   meeting_date: string | null
+  overall_summary: string
+  participants: string | null
+  created_at: string
+}
+
+export type AssignedBy = 'ai' | 'manual'
+
+export type ClientMeetingInsight = {
+  id: string
+  meeting_summary_id: string
+  client_id: string | null
+  context_summary: string
   key_decisions: string[]
   open_items: string[]
-  context: string | null
-  created_at: string
-}
-
-export type CallSummary = {
-  id: string
-  doc_id: string
-  doc_name: string
-  summary: string
-  participants: string | null
-  key_points: string[]
-  action_items_count: number
-  meeting_date: string | null
-  created_at: string
-}
-
-export type TeamMember = {
-  id: string
-  name: string
-  role: string | null
-  email: string | null
-  created_at: string
-}
-
-export type ClientNote = {
-  id: string
-  client_id: string | null
-  content: string
-  source: 'chat' | 'audio' | 'file'
-  file_name: string | null
+  assigned_by: AssignedBy
   created_at: string
 }
