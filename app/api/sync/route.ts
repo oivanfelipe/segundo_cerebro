@@ -27,7 +27,12 @@ export async function POST() {
     return NextResponse.json({ error: 'GOOGLE_DRIVE_FOLDER_ID não configurado.' }, { status: 500 })
   }
 
-  const { data: processed } = await supabase.from('processed_docs').select('folder_id')
+  // Pastas com status 'error' não contam como concluídas — ficam elegíveis para nova
+  // tentativa automática no próximo sync (ex: falha temporária de API, chave inválida).
+  const { data: processed } = await supabase
+    .from('processed_docs')
+    .select('folder_id')
+    .neq('status', 'error')
   const processedIds = new Set((processed || []).map((r) => r.folder_id))
 
   const folders = await listMeetingFolders(folderId)
@@ -57,21 +62,23 @@ export async function POST() {
       const doc = await findTranscriptionDoc(folderId)
 
       if (!doc) {
-        await supabase.from('processed_docs').insert({
-          folder_id: folderId,
-          folder_name: folderName,
-          status: 'no_transcript',
-        })
+        await supabase
+          .from('processed_docs')
+          .upsert(
+            { folder_id: folderId, folder_name: folderName, status: 'no_transcript', error_message: null },
+            { onConflict: 'folder_id' }
+          )
         continue
       }
 
       const content = await readDocContent(doc.id)
       if (!content || content.length < 100) {
-        await supabase.from('processed_docs').insert({
-          folder_id: folderId,
-          folder_name: folderName,
-          status: 'no_transcript',
-        })
+        await supabase
+          .from('processed_docs')
+          .upsert(
+            { folder_id: folderId, folder_name: folderName, status: 'no_transcript', error_message: null },
+            { onConflict: 'folder_id' }
+          )
         continue
       }
 
@@ -79,7 +86,10 @@ export async function POST() {
 
       const { data: processedDoc, error: processedDocError } = await supabase
         .from('processed_docs')
-        .insert({ folder_id: folderId, folder_name: folderName, status: 'processed' })
+        .upsert(
+          { folder_id: folderId, folder_name: folderName, status: 'processed', error_message: null },
+          { onConflict: 'folder_id' }
+        )
         .select('id')
         .single()
 
@@ -118,12 +128,12 @@ export async function POST() {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido'
       errors.push({ folder: folderName, message })
-      await supabase.from('processed_docs').insert({
-        folder_id: folderId,
-        folder_name: folderName,
-        status: 'error',
-        error_message: message,
-      })
+      await supabase
+        .from('processed_docs')
+        .upsert(
+          { folder_id: folderId, folder_name: folderName, status: 'error', error_message: message },
+          { onConflict: 'folder_id' }
+        )
     }
   }
 
