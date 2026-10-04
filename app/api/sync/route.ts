@@ -7,6 +7,11 @@ import { refreshClientAccumulatedSummary } from '@/lib/compiled'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
+// Cada reunião envolve uma leitura no Drive + uma chamada à Groq — processar um lote
+// grande numa chamada só estoura o limite de tempo da função serverless. Processa em
+// lotes pequenos; o cliente (botão "Sincronizar agora") repete a chamada até zerar.
+const BATCH_SIZE = 15
+
 function matchClient(
   clientList: { id: string; name: string }[],
   name: string
@@ -36,11 +41,14 @@ export async function POST() {
   const processedIds = new Set((processed || []).map((r) => r.folder_id))
 
   const folders = await listMeetingFolders(folderId)
-  const newFolders = folders.filter((f) => f.id && !processedIds.has(f.id))
+  const pendingFolders = folders.filter((f) => f.id && !processedIds.has(f.id))
 
-  if (newFolders.length === 0) {
-    return NextResponse.json({ synced: 0, message: 'Nenhuma reunião nova encontrada.' })
+  if (pendingFolders.length === 0) {
+    return NextResponse.json({ synced: 0, remaining: 0, message: 'Nenhuma reunião nova encontrada.' })
   }
+
+  const newFolders = pendingFolders.slice(0, BATCH_SIZE)
+  const remaining = pendingFolders.length - newFolders.length
 
   const { data: clients } = await supabase
     .from('clients')
@@ -147,6 +155,7 @@ export async function POST() {
   return NextResponse.json({
     synced,
     skipped: newFolders.length - synced - errors.length,
+    remaining,
     errors,
   })
 }

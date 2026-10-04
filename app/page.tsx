@@ -44,18 +44,30 @@ export default function Dashboard() {
     setSyncing(true)
     setSyncMessage(null)
     try {
-      const res = await fetch('/api/sync', { method: 'POST' })
-      const data = await res.json()
-      if (data.error) {
-        setSyncMessage(`Erro: ${data.error}`)
-      } else if (data.message) {
-        setSyncMessage(data.message)
-      } else {
+      let totalSynced = 0
+      let totalErrors = 0
+      // O sync processa em lotes (ver BATCH_SIZE em /api/sync) para não estourar o
+      // tempo limite da função serverless — repete até não sobrar nada pendente.
+      for (let round = 0; round < 20; round++) {
+        const res = await fetch('/api/sync', { method: 'POST' })
+        const data = await res.json()
+        if (data.error) {
+          setSyncMessage(`Erro: ${data.error}`)
+          break
+        }
+        totalSynced += data.synced || 0
+        totalErrors += data.errors?.length || 0
         setSyncMessage(
-          `${data.synced} reunião(ões) sincronizada(s)${data.errors?.length ? `, ${data.errors.length} com erro` : ''}.`
+          `Sincronizando… ${totalSynced} reunião(ões) processada(s)${totalErrors ? `, ${totalErrors} com erro` : ''}.`
         )
+        await load()
+        if (!data.remaining) {
+          setSyncMessage(
+            `${totalSynced} reunião(ões) sincronizada(s)${totalErrors ? `, ${totalErrors} com erro` : ''}.`
+          )
+          break
+        }
       }
-      await load()
     } catch (err) {
       setSyncMessage(err instanceof Error ? `Erro: ${err.message}` : 'Erro ao sincronizar.')
     } finally {
