@@ -2,7 +2,9 @@ import Groq from 'groq-sdk'
 
 export const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || 'placeholder-build-only' })
 
-export const MODEL = 'llama-3.3-70b-versatile'
+// llama-3.3-70b-versatile foi descontinuado pela Groq; openai/gpt-oss-120b é o
+// substituto disponível na conta com qualidade equivalente para extração estruturada.
+export const MODEL = 'openai/gpt-oss-120b'
 
 export interface MeetingAnalysis {
   overall_summary: string
@@ -63,7 +65,10 @@ Se nenhum cliente da lista foi mencionado, retorne "clients": [].`
     model: MODEL,
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.2,
-    max_tokens: 4096,
+    max_tokens: 6000,
+    // gpt-oss é um modelo de raciocínio — "low" mantém o orçamento de tokens de
+    // pensamento baixo o suficiente para sobrar espaço pro JSON de resposta.
+    reasoning_effort: 'low',
   })
 
   const raw = completion.choices[0]?.message?.content || '{}'
@@ -109,7 +114,8 @@ Escreva um resumo geral acumulado (4-8 frases) que capture: o estado atual do re
     model: MODEL,
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.3,
-    max_tokens: 1024,
+    max_tokens: 1500,
+    reasoning_effort: 'low',
   })
 
   return completion.choices[0]?.message?.content?.trim() || ''

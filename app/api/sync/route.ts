@@ -71,7 +71,10 @@ export async function POST() {
         continue
       }
 
-      const content = await readDocContent(doc.id)
+      const content = await readDocContent(doc.id).catch((err) => {
+        const message = err instanceof Error ? err.message : 'Erro desconhecido'
+        throw new Error(`[docId=${doc.id}] ${message}`)
+      })
       if (!content || content.length < 100) {
         await supabase
           .from('processed_docs')
