@@ -34,21 +34,25 @@ export async function POST() {
 
   // Pastas com status 'error' não contam como concluídas — ficam elegíveis para nova
   // tentativa automática no próximo sync (ex: falha temporária de API, chave inválida).
-  const { data: processed } = await supabase
-    .from('processed_docs')
-    .select('folder_id')
-    .neq('status', 'error')
-  const processedIds = new Set((processed || []).map((r) => r.folder_id))
+  const { data: processed } = await supabase.from('processed_docs').select('folder_id, status')
+  const doneIds = new Set((processed || []).filter((r) => r.status !== 'error').map((r) => r.folder_id))
+  const erroredIds = new Set((processed || []).filter((r) => r.status === 'error').map((r) => r.folder_id))
 
   const folders = await listMeetingFolders(folderId)
-  const pendingFolders = folders.filter((f) => f.id && !processedIds.has(f.id))
+  const pendingFolders = folders.filter((f) => f.id && !doneIds.has(f.id))
 
   if (pendingFolders.length === 0) {
     return NextResponse.json({ synced: 0, remaining: 0, message: 'Nenhuma reunião nova encontrada.' })
   }
 
-  const newFolders = pendingFolders.slice(0, BATCH_SIZE)
-  const remaining = pendingFolders.length - newFolders.length
+  // Prioriza pastas nunca tentadas — se uma falha persistente (ex: permissão) sempre
+  // caísse no topo do lote, travaria o progresso nas demais pendentes pra sempre.
+  const neverAttempted = pendingFolders.filter((f) => !erroredIds.has(f.id!))
+  const previouslyErrored = pendingFolders.filter((f) => erroredIds.has(f.id!))
+  const ordered = [...neverAttempted, ...previouslyErrored]
+
+  const newFolders = ordered.slice(0, BATCH_SIZE)
+  const remaining = ordered.length - newFolders.length
 
   const { data: clients } = await supabase
     .from('clients')
