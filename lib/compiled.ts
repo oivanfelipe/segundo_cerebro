@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { supabase, type OpenItem } from '@/lib/supabase'
 import { regenerateAccumulatedSummary, type ClientHistoryEntry } from '@/lib/groq'
 
 // Recalcula o resumo geral acumulado de um cliente a partir de todo o seu histórico de
@@ -31,7 +31,9 @@ export async function refreshClientAccumulatedSummary(clientId: string): Promise
         .meeting_summaries?.meeting_date ?? null,
     context_summary: i.context_summary,
     key_decisions: i.key_decisions || [],
-    open_items: i.open_items || [],
+    // só pendências ainda em aberto entram no resumo acumulado — uma tarefa marcada
+    // como feita não é mais algo que o usuário precise lembrar antes da próxima reunião.
+    open_items: ((i.open_items || []) as OpenItem[]).filter((o) => !o.done).map((o) => o.text),
   }))
 
   const summary = await regenerateAccumulatedSummary(client.name, history)

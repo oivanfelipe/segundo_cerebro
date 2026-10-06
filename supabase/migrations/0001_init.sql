@@ -49,7 +49,7 @@ create table if not exists client_meeting_insights (
   client_id uuid references clients(id) on delete set null,
   context_summary text not null,
   key_decisions text[] not null default '{}',
-  open_items text[] not null default '{}',
+  open_items jsonb not null default '[]'::jsonb, -- [{ text, done, done_at }]
   assigned_by text not null default 'ai' check (assigned_by in ('ai', 'manual')),
   created_at timestamptz not null default now()
 );

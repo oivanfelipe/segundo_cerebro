@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 
@@ -25,7 +25,18 @@ type Compiled = {
     assigned_by: 'ai' | 'manual'
   }[]
   decisions: { item: string; meeting_date: string | null }[]
-  open_items: { item: string; meeting_date: string | null }[]
+  open_items: {
+    insight_id: string
+    index: number
+    item: string
+    done: boolean
+    done_at: string | null
+    meeting_date: string | null
+  }[]
+}
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString('pt-BR')
 }
 
 export default function ClientCompiledPage() {
@@ -33,19 +44,36 @@ export default function ClientCompiledPage() {
   const [data, setData] = useState<Compiled | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+  const [togglingKey, setTogglingKey] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    const r = await fetch(`/api/clients/${params.id}/compiled`)
+    if (!r.ok) {
+      setNotFound(true)
+      return
+    }
+    setData(await r.json())
+  }, [params.id])
 
   useEffect(() => {
-    fetch(`/api/clients/${params.id}/compiled`)
-      .then(async (r) => {
-        if (!r.ok) {
-          setNotFound(true)
-          return null
-        }
-        return r.json()
+    setLoading(true)
+    load().finally(() => setLoading(false))
+  }, [load])
+
+  async function toggleOpenItem(insightId: string, index: number, done: boolean) {
+    const key = `${insightId}:${index}`
+    setTogglingKey(key)
+    try {
+      await fetch(`/api/insights/${insightId}/open-items`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ index, done }),
       })
-      .then((d) => d && setData(d))
-      .finally(() => setLoading(false))
-  }, [params.id])
+      await load()
+    } finally {
+      setTogglingKey(null)
+    }
+  }
 
   if (loading) return <p>Carregando…</p>
   if (notFound || !data) return <p>Cliente não encontrado.</p>
@@ -90,12 +118,39 @@ export default function ClientCompiledPage() {
             <h2 style={{ marginBottom: 'var(--sp-4)' }}>PENDÊNCIAS</h2>
             <div className="block-yellow" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
               {openItems.length === 0 && <p style={{ margin: 0 }}>Nenhuma pendência em aberto.</p>}
-              {openItems.map((o, i) => (
-                <div key={i}>
-                  • {o.item}
-                  {o.meeting_date && <span style={{ fontSize: 11 }}> ({o.meeting_date})</span>}
-                </div>
-              ))}
+              {openItems.map((o) => {
+                const key = `${o.insight_id}:${o.index}`
+                return (
+                  <label
+                    key={key}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 'var(--sp-2)',
+                      cursor: 'pointer',
+                      opacity: togglingKey === key ? 0.5 : 1,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={o.done}
+                      disabled={togglingKey === key}
+                      onChange={(e) => toggleOpenItem(o.insight_id, o.index, e.target.checked)}
+                      style={{ marginTop: 3 }}
+                    />
+                    <span style={{ textDecoration: o.done ? 'line-through' : 'none' }}>
+                      {o.item}
+                      {o.meeting_date && <span style={{ fontSize: 11 }}> ({o.meeting_date})</span>}
+                      {o.done && o.done_at && (
+                        <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                          {' '}
+                          — concluído em {formatDate(o.done_at)}
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                )
+              })}
             </div>
           </div>
           <div>

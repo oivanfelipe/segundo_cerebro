@@ -42,13 +42,19 @@ export type MeetingSummary = {
 
 export type AssignedBy = 'ai' | 'manual'
 
+export type OpenItem = {
+  text: string
+  done: boolean
+  done_at: string | null
+}
+
 export type ClientMeetingInsight = {
   id: string
   meeting_summary_id: string
   client_id: string | null
   context_summary: string
   key_decisions: string[]
-  open_items: string[]
+  open_items: OpenItem[]
   assigned_by: AssignedBy
   created_at: string
 }

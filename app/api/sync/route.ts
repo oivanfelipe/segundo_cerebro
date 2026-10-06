@@ -132,7 +132,7 @@ export async function POST() {
           client_id: clientId,
           context_summary: clientData.context_summary,
           key_decisions: clientData.key_decisions,
-          open_items: clientData.open_items,
+          open_items: clientData.open_items.map((text) => ({ text, done: false, done_at: null })),
           assigned_by: 'ai',
         })
 

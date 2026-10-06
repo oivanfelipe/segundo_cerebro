@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabase, type OpenItem } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,9 +38,19 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     }))
     .sort((a, b) => (b.meeting_date || '').localeCompare(a.meeting_date || ''))
 
-  const openItems = timeline.flatMap((t) =>
-    t.open_items.map((item: string) => ({ item, meeting_date: t.meeting_date }))
-  )
+  const openItems = timeline
+    .flatMap((t) =>
+      (t.open_items as OpenItem[]).map((item, index) => ({
+        insight_id: t.insight_id,
+        index,
+        item: item.text,
+        done: item.done,
+        done_at: item.done_at,
+        meeting_date: t.meeting_date,
+      }))
+    )
+    // pendências em aberto primeiro — as concluídas ficam no fim, fora do caminho.
+    .sort((a, b) => Number(a.done) - Number(b.done))
   const decisions = timeline.flatMap((t) =>
     t.key_decisions.map((item: string) => ({ item, meeting_date: t.meeting_date }))
   )

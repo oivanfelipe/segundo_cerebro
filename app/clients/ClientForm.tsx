@@ -17,6 +17,7 @@ export default function ClientForm({ initial }: { initial?: ClientFormValues }) 
     initial || { name: '', contact: '', segment: '', status: 'active' }
   )
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function save() {
@@ -41,6 +42,27 @@ export default function ClientForm({ initial }: { initial?: ClientFormValues }) 
       setError(err instanceof Error ? err.message : 'Erro ao salvar cliente.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function remove() {
+    if (!values.id) return
+    const ok = window.confirm(
+      `Excluir "${values.name}"? As reuniões já sincronizadas continuam salvas, mas perdem o vínculo com este cliente.`
+    )
+    if (!ok) return
+    setDeleting(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/clients/${values.id}`, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Erro ao excluir cliente.')
+      router.push('/clients')
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao excluir cliente.')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -83,9 +105,16 @@ export default function ClientForm({ initial }: { initial?: ClientFormValues }) 
 
       {error && <p style={{ color: 'var(--navy)', fontWeight: 600 }}>{error}</p>}
 
-      <button className="btn btn-primary" onClick={save} disabled={saving}>
-        {saving ? 'SALVANDO…' : 'SALVAR CLIENTE'}
-      </button>
+      <div style={{ display: 'flex', gap: 'var(--sp-3)' }}>
+        <button className="btn btn-primary" onClick={save} disabled={saving || deleting}>
+          {saving ? 'SALVANDO…' : 'SALVAR CLIENTE'}
+        </button>
+        {values.id && (
+          <button className="btn btn-secondary" onClick={remove} disabled={saving || deleting}>
+            {deleting ? 'EXCLUINDO…' : 'EXCLUIR CLIENTE'}
+          </button>
+        )}
+      </div>
     </div>
   )
 }

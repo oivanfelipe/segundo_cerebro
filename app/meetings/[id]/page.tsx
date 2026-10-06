@@ -4,14 +4,19 @@ import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 
 type Client = { id: string; name: string }
+type OpenItem = { text: string; done: boolean; done_at: string | null }
 type Insight = {
   id: string
   client_id: string | null
   context_summary: string
   key_decisions: string[]
-  open_items: string[]
+  open_items: OpenItem[]
   assigned_by: 'ai' | 'manual'
   clients: { id: string; name: string } | null
+}
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString('pt-BR')
 }
 type MeetingDetail = {
   id: string
@@ -28,6 +33,7 @@ export default function MeetingDetailPage() {
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [savingId, setSavingId] = useState<string | null>(null)
+  const [togglingKey, setTogglingKey] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -55,6 +61,21 @@ export default function MeetingDetailPage() {
       await load()
     } finally {
       setSavingId(null)
+    }
+  }
+
+  async function toggleOpenItem(insightId: string, index: number, done: boolean) {
+    const key = `${insightId}:${index}`
+    setTogglingKey(key)
+    try {
+      await fetch(`/api/insights/${insightId}/open-items`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ index, done }),
+      })
+      await load()
+    } finally {
+      setTogglingKey(null)
     }
   }
 
@@ -124,11 +145,38 @@ export default function MeetingDetailPage() {
                   <div className="eyebrow" style={{ color: 'var(--navy)', marginBottom: 4 }}>
                     Pendências
                   </div>
-                  {insight.open_items.map((o, i) => (
-                    <div key={i} style={{ fontSize: 13 }}>
-                      • {o}
-                    </div>
-                  ))}
+                  {insight.open_items.map((o, i) => {
+                    const key = `${insight.id}:${i}`
+                    return (
+                      <label
+                        key={key}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: 'var(--sp-2)',
+                          fontSize: 13,
+                          cursor: 'pointer',
+                          opacity: togglingKey === key ? 0.5 : 1,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={o.done}
+                          disabled={togglingKey === key}
+                          onChange={(e) => toggleOpenItem(insight.id, i, e.target.checked)}
+                        />
+                        <span style={{ textDecoration: o.done ? 'line-through' : 'none' }}>
+                          {o.text}
+                          {o.done && o.done_at && (
+                            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                              {' '}
+                              — concluído em {formatDate(o.done_at)}
+                            </span>
+                          )}
+                        </span>
+                      </label>
+                    )
+                  })}
                 </div>
               )}
             </div>
