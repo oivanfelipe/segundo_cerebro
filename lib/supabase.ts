@@ -58,3 +58,11 @@ export type ClientMeetingInsight = {
   assigned_by: AssignedBy
   created_at: string
 }
+
+export type GoogleOAuthTokens = {
+  id: number
+  access_token: string | null
+  refresh_token: string | null
+  expiry_date: string | null
+  updated_at: string
+}

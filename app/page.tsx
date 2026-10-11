@@ -15,12 +15,16 @@ type Meeting = {
   has_unassigned: boolean
 }
 
+type GoogleStatus = { connected: boolean; updated_at: string | null }
+
 export default function Dashboard() {
   const [clients, setClients] = useState<Client[]>([])
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
+  const [googleStatus, setGoogleStatus] = useState<GoogleStatus | null>(null)
+  const [googleMessage, setGoogleMessage] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -38,6 +42,20 @@ export default function Dashboard() {
 
   useEffect(() => {
     load()
+    fetch('/api/auth/google/status')
+      .then((r) => r.json())
+      .then(setGoogleStatus)
+
+    // feedback do redirect de /api/auth/google/callback — lido da URL direto no
+    // cliente (sem useSearchParams) pra não exigir boundary de Suspense na página.
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('google_connected')) {
+      setGoogleMessage('Google conectado com sucesso.')
+      window.history.replaceState({}, '', '/')
+    } else if (params.get('google_error')) {
+      setGoogleMessage(`Erro ao conectar com o Google: ${params.get('google_error')}`)
+      window.history.replaceState({}, '', '/')
+    }
   }, [load])
 
   async function runSync() {
@@ -91,6 +109,51 @@ export default function Dashboard() {
       {syncMessage && (
         <div className="block" style={{ padding: 'var(--sp-3) var(--sp-4)' }}>
           {syncMessage}
+        </div>
+      )}
+
+      {googleMessage && (
+        <div className="block" style={{ padding: 'var(--sp-3) var(--sp-4)' }}>
+          {googleMessage}
+        </div>
+      )}
+
+      {googleStatus && !googleStatus.connected && (
+        <div
+          className="block-yellow"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 'var(--sp-4)',
+            flexWrap: 'wrap',
+          }}
+        >
+          <div>
+            <strong>Google não conectado.</strong> Conecte sua conta para sincronizar reuniões —
+            inclusive as que a service account antiga não conseguia ler.
+          </div>
+          <a href="/api/auth/google/start" className="btn btn-primary">
+            CONECTAR GOOGLE
+          </a>
+        </div>
+      )}
+
+      {googleStatus?.connected && (
+        <div
+          className="block"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 'var(--sp-4)',
+            flexWrap: 'wrap',
+          }}
+        >
+          <span style={{ fontSize: 13, color: 'var(--muted)' }}>GOOGLE CONECTADO</span>
+          <a href="/api/auth/google/start" className="btn btn-secondary">
+            RECONECTAR
+          </a>
         </div>
       )}
 
