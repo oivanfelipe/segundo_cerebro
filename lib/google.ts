@@ -114,7 +114,10 @@ export async function listMeetingFolders(folderId: string, since?: string): Prom
   const auth = await getAuthedClient()
   const drive = google.drive({ version: 'v3', auth })
 
-  const q = `'${folderId}' in parents and (mimeType='${FOLDER}' or mimeType='${SHORTCUT}') and trashed=false`
+  // createdTime no filtro da query: a Drive já devolve só o período pedido (pastas e atalhos)
+  const q =
+    `'${folderId}' in parents and (mimeType='${FOLDER}' or mimeType='${SHORTCUT}') and trashed=false` +
+    (since ? ` and createdTime >= '${since}'` : '')
   const result: DriveFolder[] = []
   let pageToken: string | undefined
 
@@ -130,7 +133,6 @@ export async function listMeetingFolders(folderId: string, since?: string): Prom
     })
 
     for (const f of res.data.files || []) {
-      if (since && f.createdTime && f.createdTime < since) continue
       if (f.mimeType === FOLDER) {
         result.push({ id: f.id, name: f.name, createdTime: f.createdTime })
       } else if (f.mimeType === SHORTCUT && f.shortcutDetails?.targetMimeType === FOLDER) {

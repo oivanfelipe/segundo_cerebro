@@ -7,6 +7,9 @@ import { refreshClientAccumulatedSummary } from '@/lib/compiled'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
+// O sync olha só a última semana de reuniões (janela móvel de 7 dias).
+const SYNC_WINDOW_DAYS = 7
+
 // Cada reunião envolve uma leitura no Drive + uma chamada à Groq — processar um lote
 // grande numa chamada só estoura o limite de tempo da função serverless. Processa em
 // lotes pequenos; o cliente (botão "Sincronizar agora") repete a chamada até zerar.
@@ -38,11 +41,12 @@ export async function POST() {
   const doneIds = new Set((processed || []).filter((r) => r.status !== 'error').map((r) => r.folder_id))
   const erroredIds = new Set((processed || []).filter((r) => r.status === 'error').map((r) => r.folder_id))
 
-  const folders = await listMeetingFolders(folderId)
+  const since = new Date(Date.now() - SYNC_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  const folders = await listMeetingFolders(folderId, since)
   const pendingFolders = folders.filter((f) => f.id && !doneIds.has(f.id))
 
   if (pendingFolders.length === 0) {
-    return NextResponse.json({ synced: 0, remaining: 0, message: 'Nenhuma reunião nova encontrada.' })
+    return NextResponse.json({ synced: 0, remaining: 0, message: 'Nenhuma reunião nova nos últimos 7 dias.' })
   }
 
   // Prioriza pastas nunca tentadas — se uma falha persistente (ex: permissão) sempre
