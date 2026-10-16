@@ -71,30 +71,19 @@ export async function POST() {
     const folderName = folder.name || 'Reunião sem nome'
 
     try {
-      const doc = await findTranscriptionDoc(folderId)
+      const lookup = await findTranscriptionDoc(folderId)
 
-      if (!doc) {
-        await supabase
-          .from('processed_docs')
-          .upsert(
-            { folder_id: folderId, folder_name: folderName, status: 'no_transcript', error_message: null },
-            { onConflict: 'folder_id' }
-          )
-        continue
-      }
+      // Sem doc legível NÃO é "no_transcript" definitivo: pode ser falta de acesso ao destino
+      // do atalho ou doc ainda sendo gerado. Vira 'error' (reelegível no próximo sync).
+      if (!lookup.ok) throw new Error(lookup.reason)
+      const doc = lookup.doc
 
       const content = await readDocContent(doc.id).catch((err) => {
         const message = err instanceof Error ? err.message : 'Erro desconhecido'
         throw new Error(`[docId=${doc.id}] ${message}`)
       })
       if (!content || content.length < 100) {
-        await supabase
-          .from('processed_docs')
-          .upsert(
-            { folder_id: folderId, folder_name: folderName, status: 'no_transcript', error_message: null },
-            { onConflict: 'folder_id' }
-          )
-        continue
+        throw new Error(`documento "${doc.name}" vazio ou curto demais (${content?.length ?? 0} caracteres)`)
       }
 
       const analysis = await analyzeMeeting(content, clientNames)
