@@ -1,36 +1,60 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Segundo Cérebro
 
-## Getting Started
+App pessoal que sincroniza transcrições de reunião do Google Drive, gera resumos por IA,
+identifica quais clientes cadastrados foram mencionados em cada reunião e mantém um
+compilado sempre atualizado de cada cliente (linha do tempo, decisões, pendências e
+resumo geral acumulado).
 
-First, run the development server:
+Contexto completo de produto em `docs/blueprint/` (PRD, TRD, AppFlow, Design Brief,
+Esquema de Backend, Plano de Implementação).
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Stack
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Next.js 14 (App Router) + TypeScript
+- Supabase (Postgres)
+- Google Drive API + Google Docs API via OAuth (login com a conta Google do usuário)
+- Groq (`llama-3.3-70b-versatile`) para resumo e identificação de cliente
+- Deploy: Vercel
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. **Supabase**: o projeto de produção (`task-chat`, compartilhado com outros apps
+   pessoais) já foi migrado — ver `supabase/migrations/0002_adapt_task_chat_project.sql`.
+   URL: `https://lbqmanwfgnhugjefluzy.supabase.co`. Para um projeto novo do zero, aplique
+   `supabase/migrations/0001_init.sql`.
+2. **Google Cloud**: crie um OAuth Client ID (tipo "Web application") no projeto que já
+   tem Drive API e Docs API habilitadas. Configure a tela de consentimento OAuth (modo
+   "External" + seu e-mail como test user, já que é uso pessoal) e adicione
+   `<URL_DO_APP>/api/auth/google/callback` como redirect URI autorizado. Depois de
+   configurar as variáveis de ambiente, acesse o Dashboard e clique em "Conectar
+   Google" — isso troca a Service Account (bloqueada pelo Workspace em arquivos não
+   compartilhados explicitamente com ela) pelo seu próprio acesso ao Drive.
+3. **Groq**: gere uma API key em [console.groq.com](https://console.groq.com).
+4. Copie `.env.example` para `.env.local` e preencha as variáveis.
+5. `npm install && npm run dev`.
 
-## Learn More
+## Variáveis de ambiente
 
-To learn more about Next.js, take a look at the following resources:
+| Variável | Descrição |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | URL do projeto Supabase |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key do Supabase — **só no backend**, nunca exposta no client |
+| `GOOGLE_OAUTH_CLIENT_ID` | Client ID do OAuth 2.0 (Google Cloud Console) |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Client secret do OAuth 2.0 |
+| `GOOGLE_OAUTH_REDIRECT_URI` | `<URL_DO_APP>/api/auth/google/callback` — precisa bater exatamente com o redirect URI autorizado no Google Cloud |
+| `GOOGLE_DRIVE_FOLDER_ID` | ID da pasta raiz do Drive onde as reuniões (subpastas) aparecem |
+| `GROQ_API_KEY` | API key da Groq |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Uso
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Antes do primeiro sync, conecte sua conta Google pelo botão no Dashboard (fica visível
+sempre que a conexão expira ou nunca foi feita). O refresh token fica salvo no Supabase
+(tabela `google_oauth_tokens`) e é renovado automaticamente pelo app.
 
-## Deploy on Vercel
+O sync é manual (sem cron na v1): no Dashboard, clique em "Sincronizar agora" para
+varrer a pasta do Drive em busca de reuniões novas, gerar os resumos e atualizar os
+compilados dos clientes mencionados.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Não há autenticação de múltiplos usuários — o app é de uso individual e não deve ter
+sua URL de produção divulgada. A conexão com o Google é por conta própria (OAuth), não
+por login de terceiros no app.

@@ -1,27 +1,108 @@
 import { google } from 'googleapis'
+import { supabase } from '@/lib/supabase'
 
-function getAuth() {
-  const privateKey = (process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '')
-    .replace(/\\n/g, '\n')
+const SCOPES = [
+  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/documents.readonly',
+]
 
-  return new google.auth.GoogleAuth({
-    credentials: {
-      client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-      private_key: privateKey,
-    },
-    scopes: [
-      'https://www.googleapis.com/auth/drive.readonly',
-      'https://www.googleapis.com/auth/spreadsheets.readonly',
-      'https://www.googleapis.com/auth/documents.readonly',
-    ],
+function getOAuthClient() {
+  return new google.auth.OAuth2(
+    process.env.GOOGLE_OAUTH_CLIENT_ID,
+    process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+    process.env.GOOGLE_OAUTH_REDIRECT_URI
+  )
+}
+
+// URL de consentimento — manda o usuário logar com a própria conta Google e autorizar
+// leitura do Drive/Docs. Troca a service account (bloqueada pelo Workspace em arquivos
+// não compartilhados explicitamente com ela) pelo acesso real do usuário.
+export function getGoogleAuthUrl() {
+  return getOAuthClient().generateAuthUrl({
+    access_type: 'offline',
+    prompt: 'consent', // força retorno de refresh_token mesmo em reconexão
+    scope: SCOPES,
   })
+}
+
+export async function exchangeGoogleAuthCode(code: string) {
+  const client = getOAuthClient()
+  const { tokens } = await client.getToken(code)
+
+  if (!tokens.refresh_token) {
+    throw new Error(
+      'Google não retornou refresh_token. Revogue o acesso em myaccount.google.com/permissions e tente conectar novamente.'
+    )
+  }
+
+  const { error } = await supabase.from('google_oauth_tokens').upsert(
+    {
+      id: 1,
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expiry_date: tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'id' }
+  )
+
+  if (error) throw new Error(`Falha ao salvar credenciais do Google: ${error.message}`)
+}
+
+export async function getGoogleConnectionStatus() {
+  const { data } = await supabase
+    .from('google_oauth_tokens')
+    .select('refresh_token, updated_at')
+    .eq('id', 1)
+    .maybeSingle()
+
+  return { connected: Boolean(data?.refresh_token), updated_at: data?.updated_at ?? null }
+}
+
+async function getAuthedClient() {
+  const { data, error } = await supabase
+    .from('google_oauth_tokens')
+    .select('*')
+    .eq('id', 1)
+    .maybeSingle()
+
+  if (error) throw new Error(`Falha ao ler credenciais do Google: ${error.message}`)
+  if (!data?.refresh_token) {
+    throw new Error('Google Drive não conectado. Acesse o Dashboard e clique em "Conectar Google".')
+  }
+
+  const client = getOAuthClient()
+  client.setCredentials({
+    refresh_token: data.refresh_token,
+    access_token: data.access_token ?? undefined,
+    expiry_date: data.expiry_date ? new Date(data.expiry_date).getTime() : undefined,
+  })
+
+  // getAccessToken() renova sozinho se o access_token estiver perto de expirar —
+  // persistimos o resultado para as próximas invocações (função serverless não mantém
+  // estado entre chamadas).
+  await client.getAccessToken()
+  const refreshed = client.credentials
+  if (refreshed.access_token && refreshed.access_token !== data.access_token) {
+    await supabase
+      .from('google_oauth_tokens')
+      .update({
+        access_token: refreshed.access_token,
+        refresh_token: refreshed.refresh_token ?? data.refresh_token,
+        expiry_date: refreshed.expiry_date ? new Date(refreshed.expiry_date).toISOString() : null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', 1)
+  }
+
+  return client
 }
 
 const FOLDER = 'application/vnd.google-apps.folder'
 const DOC = 'application/vnd.google-apps.document'
 const SHORTCUT = 'application/vnd.google-apps.shortcut'
 
-export interface MeetingFolder {
+export type DriveFolder = {
   id: string
   name: string
   createdTime?: string | null
@@ -29,12 +110,12 @@ export interface MeetingFolder {
 
 // Lists meeting subfolders inside the root folder (real folders AND shortcuts to folders),
 // optionally filtered by createdTime. Paginates through all results.
-export async function listMeetingFolders(folderId: string, since?: string): Promise<MeetingFolder[]> {
-  const auth = getAuth()
+export async function listMeetingFolders(folderId: string, since?: string): Promise<DriveFolder[]> {
+  const auth = await getAuthedClient()
   const drive = google.drive({ version: 'v3', auth })
 
   const q = `'${folderId}' in parents and (mimeType='${FOLDER}' or mimeType='${SHORTCUT}') and trashed=false`
-  const result: MeetingFolder[] = []
+  const result: DriveFolder[] = []
   let pageToken: string | undefined
 
   do {
@@ -71,7 +152,7 @@ export type TranscriptionLookup =
 // Finds the transcription doc inside a meeting folder (resolves shortcuts).
 // Returns a reason when nothing usable is found so the caller can report it instead of silently skipping.
 export async function findTranscriptionDoc(folderId: string): Promise<TranscriptionLookup> {
-  const auth = getAuth()
+  const auth = await getAuthedClient()
   const drive = google.drive({ version: 'v3', auth })
 
   const files: any[] = []
@@ -158,7 +239,7 @@ function textFromTabs(tabs: any[] = []): string {
 // Reads a Google Doc including ALL tabs (Gemini notes put the transcript in a separate tab)
 // and table contents. Falls back to Drive's plain-text export if the Docs API fails.
 export async function readDocContent(docId: string): Promise<string> {
-  const auth = getAuth()
+  const auth = await getAuthedClient()
   const docs = google.docs({ version: 'v1', auth })
 
   try {
@@ -174,21 +255,4 @@ export async function readDocContent(docId: string): Promise<string> {
   const drive = google.drive({ version: 'v3', auth })
   const exp = await drive.files.export({ fileId: docId, mimeType: 'text/plain' }, { responseType: 'text' })
   return String(exp.data || '').trim()
-}
-
-export async function readSheetClients(sheetId: string): Promise<string[]> {
-  const auth = getAuth()
-  const sheets = google.sheets({ version: 'v4', auth })
-
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: sheetId,
-    range: 'A:A',
-  })
-
-  const rows = res.data.values || []
-  return rows
-    .flat()
-    .map((v: string) => v.trim())
-    .filter(Boolean)
-    .slice(1) // skip header row
 }

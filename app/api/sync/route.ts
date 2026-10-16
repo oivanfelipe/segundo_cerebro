@@ -2,143 +2,153 @@ import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { listMeetingFolders, findTranscriptionDoc, readDocContent } from '@/lib/google'
 import { analyzeMeeting } from '@/lib/groq'
+import { refreshClientAccumulatedSummary } from '@/lib/compiled'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 300
 
+// Cada reunião envolve uma leitura no Drive + uma chamada à Groq — processar um lote
+// grande numa chamada só estoura o limite de tempo da função serverless. Processa em
+// lotes pequenos; o cliente (botão "Sincronizar agora") repete a chamada até zerar.
+const BATCH_SIZE = 15
+
+function matchClient(
+  clientList: { id: string; name: string }[],
+  name: string
+): string | null {
+  const found = clientList.find(
+    (c) =>
+      c.name.toLowerCase() === name.toLowerCase() ||
+      c.name.toLowerCase().includes(name.toLowerCase()) ||
+      name.toLowerCase().includes(c.name.toLowerCase())
+  )
+  return found?.id ?? null
+}
+
+// Sync manual (disparado pelo botão "Sincronizar agora" — sem cron na v1, ver TRD).
 export async function POST() {
-  try {
-    const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID!
-    console.log(`[sync] iniciando. GOOGLE_DRIVE_FOLDER_ID=${folderId}`)
+  const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID
+  if (!folderId) {
+    return NextResponse.json({ error: 'GOOGLE_DRIVE_FOLDER_ID não configurado.' }, { status: 500 })
+  }
 
-    // Get already-processed folder IDs
-    const { data: processed } = await supabase
-      .from('processed_docs')
-      .select('doc_id')
+  // Pastas com status 'error' não contam como concluídas — ficam elegíveis para nova
+  // tentativa automática no próximo sync (ex: falha temporária de API, chave inválida).
+  const { data: processed } = await supabase.from('processed_docs').select('folder_id, status')
+  const doneIds = new Set((processed || []).filter((r) => r.status !== 'error').map((r) => r.folder_id))
+  const erroredIds = new Set((processed || []).filter((r) => r.status === 'error').map((r) => r.folder_id))
 
-    const processedIds = new Set((processed || []).map((r: any) => r.doc_id))
+  const folders = await listMeetingFolders(folderId)
+  const pendingFolders = folders.filter((f) => f.id && !doneIds.has(f.id))
 
-    // On first sync (no processed docs yet), restrict to last week only
-    const isFirstSync = processedIds.size === 0
-    const folders = isFirstSync
-      ? await listMeetingFolders(folderId, '2026-09-14T00:00:00Z')
-      : await listMeetingFolders(folderId)
+  if (pendingFolders.length === 0) {
+    return NextResponse.json({ synced: 0, remaining: 0, message: 'Nenhuma reunião nova encontrada.' })
+  }
 
-    const newFolders = folders.filter((f) => !processedIds.has(f.id))
-    console.log(`[sync] total pastas=${folders.length} processedIds=${processedIds.size} novas=${newFolders.length}`)
+  // Prioriza pastas nunca tentadas — se uma falha persistente (ex: permissão) sempre
+  // caísse no topo do lote, travaria o progresso nas demais pendentes pra sempre.
+  const neverAttempted = pendingFolders.filter((f) => !erroredIds.has(f.id!))
+  const previouslyErrored = pendingFolders.filter((f) => erroredIds.has(f.id!))
+  const ordered = [...neverAttempted, ...previouslyErrored]
 
-    if (newFolders.length === 0) {
-      return NextResponse.json({ synced: 0, message: 'Nenhuma reunião nova encontrada.' })
-    }
+  const newFolders = ordered.slice(0, BATCH_SIZE)
+  const remaining = ordered.length - newFolders.length
 
-    // Get known clients from Supabase
-    const { data: clients } = await supabase
-      .from('clients')
-      .select('id, name')
-      .eq('status', 'active')
+  const { data: clients } = await supabase
+    .from('clients')
+    .select('id, name')
+    .eq('status', 'active')
 
-    const clientList = (clients || []) as { id: string; name: string }[]
-    const clientNames = clientList.map((c) => c.name)
+  const clientList = (clients || []) as { id: string; name: string }[]
+  const clientNames = clientList.map((c) => c.name)
 
-    let totalSynced = 0
-    let totalTasks = 0
-    const errors: string[] = []
+  let synced = 0
+  const errors: { folder: string; message: string }[] = []
+  const affectedClientIds = new Set<string>()
 
-    for (const folder of newFolders) {
-      try {
-        // Find the transcription doc inside this meeting folder
-        const lookup = await findTranscriptionDoc(folder.id as string)
+  for (const folder of newFolders) {
+    const folderId = folder.id!
+    const folderName = folder.name || 'Reunião sem nome'
 
-        if (!lookup.ok) {
-          // Do NOT mark as processed: the doc may be shared/generated later, so retry on next sync
-          errors.push(`${folder.name}: ${lookup.reason}`)
-          continue
-        }
-        const doc = lookup.doc
+    try {
+      const lookup = await findTranscriptionDoc(folderId)
 
-        const content = await readDocContent(doc.id)
-        if (!content || content.length < 100) {
-          // Possibly still being generated or unreadable — report and retry next time
-          errors.push(`${folder.name}: documento "${doc.name}" vazio ou curto demais (${content?.length ?? 0} caracteres)`)
-          continue
-        }
+      // Sem doc legível NÃO é "no_transcript" definitivo: pode ser falta de acesso ao destino
+      // do atalho ou doc ainda sendo gerado. Vira 'error' (reelegível no próximo sync).
+      if (!lookup.ok) throw new Error(lookup.reason)
+      const doc = lookup.doc
 
-        const analysis = await analyzeMeeting(content, clientNames as string[])
+      const content = await readDocContent(doc.id).catch((err) => {
+        const message = err instanceof Error ? err.message : 'Erro desconhecido'
+        throw new Error(`[docId=${doc.id}] ${message}`)
+      })
+      if (!content || content.length < 100) {
+        throw new Error(`documento "${doc.name}" vazio ou curto demais (${content?.length ?? 0} caracteres)`)
+      }
 
-        // Save call_summary
-        const { data: callSummary } = await supabase
-          .from('call_summaries')
-          .insert({
-            doc_id: doc.id,
-            doc_name: folder.name,
-            summary: analysis.overall_summary,
-            participants: analysis.participants,
-            key_points: analysis.clients.flatMap((c) => c.key_decisions).slice(0, 10),
-            action_items_count: analysis.clients.reduce((n, c) => n + c.action_items.length, 0),
-            meeting_date: analysis.meeting_date,
-            client_ids: [],
-          })
-          .select('id')
-          .single()
+      const analysis = await analyzeMeeting(content, clientNames)
 
-        let docTaskCount = 0
+      const { data: processedDoc, error: processedDocError } = await supabase
+        .from('processed_docs')
+        .upsert(
+          { folder_id: folderId, folder_name: folderName, status: 'processed', error_message: null },
+          { onConflict: 'folder_id' }
+        )
+        .select('id')
+        .single()
 
-        for (const clientData of analysis.clients) {
-          const matched = clientList.find(
-            (c) =>
-              c.name.toLowerCase().includes(clientData.name.toLowerCase()) ||
-              clientData.name.toLowerCase().includes(c.name.toLowerCase())
-          )
+      if (processedDocError || !processedDoc) throw new Error(processedDocError?.message)
 
-          const clientId = matched?.id || null
+      const { data: meetingSummary, error: meetingSummaryError } = await supabase
+        .from('meeting_summaries')
+        .insert({
+          processed_doc_id: processedDoc.id,
+          doc_name: folderName,
+          meeting_date: analysis.meeting_date,
+          overall_summary: analysis.overall_summary,
+          participants: analysis.participants,
+        })
+        .select('id')
+        .single()
 
-          const { data: insight } = await supabase
-            .from('client_meeting_insights')
-            .insert({
-              call_summary_id: callSummary?.id || null,
-              client_id: clientId,
-              doc_name: folder.name,
-              meeting_date: analysis.meeting_date,
-              key_decisions: clientData.key_decisions,
-              open_items: clientData.action_items.map((a) => a.title),
-              context: clientData.summary,
-            })
-            .select('id')
-            .single()
+      if (meetingSummaryError || !meetingSummary) throw new Error(meetingSummaryError?.message)
 
-          for (const item of clientData.action_items) {
-            await supabase.from('tasks').insert({
-              title: item.title,
-              priority: item.priority,
-              deadline: item.deadline || null,
-              status: 'pendente',
-              client_id: clientId,
-              meeting_insight_id: insight?.id || null,
-            })
-            docTaskCount++
-          }
-        }
+      for (const clientData of analysis.clients) {
+        const clientId = matchClient(clientList, clientData.name)
 
-        // Mark folder as processed
-        await supabase.from('processed_docs').insert({
-          doc_id: folder.id,
-          doc_name: folder.name,
-          tasks_extracted: docTaskCount,
+        await supabase.from('client_meeting_insights').insert({
+          meeting_summary_id: meetingSummary.id,
+          client_id: clientId,
+          context_summary: clientData.context_summary,
+          key_decisions: clientData.key_decisions,
+          open_items: clientData.open_items.map((text) => ({ text, done: false, done_at: null })),
+          assigned_by: 'ai',
         })
 
-        totalSynced++
-        totalTasks += docTaskCount
-      } catch (err: any) {
-        errors.push(`${folder.name}: ${err.message}`)
+        if (clientId) affectedClientIds.add(clientId)
       }
-    }
 
-    return NextResponse.json({
-      synced: totalSynced,
-      tasks_created: totalTasks,
-      skipped: newFolders.length - totalSynced,
-      errors,
-    })
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+      synced++
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido'
+      errors.push({ folder: folderName, message })
+      await supabase
+        .from('processed_docs')
+        .upsert(
+          { folder_id: folderId, folder_name: folderName, status: 'error', error_message: message },
+          { onConflict: 'folder_id' }
+        )
+    }
   }
+
+  for (const clientId of Array.from(affectedClientIds)) {
+    await refreshClientAccumulatedSummary(clientId)
+  }
+
+  return NextResponse.json({
+    synced,
+    skipped: newFolders.length - synced - errors.length,
+    remaining,
+    errors,
+  })
 }
