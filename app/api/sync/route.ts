@@ -23,7 +23,7 @@ export async function POST() {
       ? await listMeetingFolders(folderId, '2026-09-14T00:00:00Z')
       : await listMeetingFolders(folderId)
 
-    const newFolders = folders.filter((f: any) => !processedIds.has(f.id))
+    const newFolders = folders.filter((f) => !processedIds.has(f.id))
     console.log(`[sync] total pastas=${folders.length} processedIds=${processedIds.size} novas=${newFolders.length}`)
 
     if (newFolders.length === 0) {
@@ -46,25 +46,19 @@ export async function POST() {
     for (const folder of newFolders) {
       try {
         // Find the transcription doc inside this meeting folder
-        const doc = await findTranscriptionDoc(folder.id as string)
+        const lookup = await findTranscriptionDoc(folder.id as string)
 
-        if (!doc) {
-          // No transcription found — mark folder as processed to skip next time
-          await supabase.from('processed_docs').insert({
-            doc_id: folder.id,
-            doc_name: folder.name,
-            tasks_extracted: 0,
-          })
+        if (!lookup.ok) {
+          // Do NOT mark as processed: the doc may be shared/generated later, so retry on next sync
+          errors.push(`${folder.name}: ${lookup.reason}`)
           continue
         }
+        const doc = lookup.doc
 
         const content = await readDocContent(doc.id)
         if (!content || content.length < 100) {
-          await supabase.from('processed_docs').insert({
-            doc_id: folder.id,
-            doc_name: folder.name,
-            tasks_extracted: 0,
-          })
+          // Possibly still being generated or unreadable — report and retry next time
+          errors.push(`${folder.name}: documento "${doc.name}" vazio ou curto demais (${content?.length ?? 0} caracteres)`)
           continue
         }
 

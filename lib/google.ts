@@ -17,78 +17,163 @@ function getAuth() {
   })
 }
 
-// Lists meeting subfolders inside the root folder, optionally filtered by createdTime
-export async function listMeetingFolders(folderId: string, since?: string) {
-  const auth = getAuth()
-  const drive = google.drive({ version: 'v3', auth })
+const FOLDER = 'application/vnd.google-apps.folder'
+const DOC = 'application/vnd.google-apps.document'
+const SHORTCUT = 'application/vnd.google-apps.shortcut'
 
-  let q = `'${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
-  if (since) {
-    q += ` and createdTime >= '${since}'`
-  }
-
-  const res = await drive.files.list({
-    q,
-    fields: 'files(id,name,createdTime)',
-    orderBy: 'createdTime desc',
-    pageSize: 100,
-    supportsAllDrives: true,
-    includeItemsFromAllDrives: true,
-  })
-
-  const files = res.data.files || []
-  console.log(`[listMeetingFolders] folderId=${folderId} since=${since} → ${files.length} pastas encontradas`)
-  return files
+export interface MeetingFolder {
+  id: string
+  name: string
+  createdTime?: string | null
 }
 
-// Finds the transcription doc inside a meeting folder (resolves shortcuts)
-export async function findTranscriptionDoc(
-  folderId: string
-): Promise<{ id: string; name: string } | null> {
+// Lists meeting subfolders inside the root folder (real folders AND shortcuts to folders),
+// optionally filtered by createdTime. Paginates through all results.
+export async function listMeetingFolders(folderId: string, since?: string): Promise<MeetingFolder[]> {
   const auth = getAuth()
   const drive = google.drive({ version: 'v3', auth })
 
-  const res = await drive.files.list({
-    q: `'${folderId}' in parents and trashed=false`,
-    fields: 'files(id,name,mimeType,shortcutDetails)',
-    pageSize: 20,
-    supportsAllDrives: true,
-    includeItemsFromAllDrives: true,
-  })
+  const q = `'${folderId}' in parents and (mimeType='${FOLDER}' or mimeType='${SHORTCUT}') and trashed=false`
+  const result: MeetingFolder[] = []
+  let pageToken: string | undefined
 
-  const files = res.data.files || []
-  console.log(`[findTranscriptionDoc] folderId=${folderId} → ${files.length} arquivos: ${files.map((f: any) => `${f.name}(${f.mimeType})`).join(', ')}`)
+  do {
+    const res: any = await drive.files.list({
+      q,
+      fields: 'nextPageToken,files(id,name,createdTime,mimeType,shortcutDetails)',
+      orderBy: 'createdTime desc',
+      pageSize: 100,
+      pageToken,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    })
+
+    for (const f of res.data.files || []) {
+      if (since && f.createdTime && f.createdTime < since) continue
+      if (f.mimeType === FOLDER) {
+        result.push({ id: f.id, name: f.name, createdTime: f.createdTime })
+      } else if (f.mimeType === SHORTCUT && f.shortcutDetails?.targetMimeType === FOLDER) {
+        // Shortcut to a folder: list the target's contents, keep the shortcut's name
+        result.push({ id: f.shortcutDetails.targetId, name: f.name, createdTime: f.createdTime })
+      }
+    }
+    pageToken = res.data.nextPageToken || undefined
+  } while (pageToken)
+
+  console.log(`[listMeetingFolders] folderId=${folderId} since=${since} → ${result.length} pastas encontradas`)
+  return result
+}
+
+export type TranscriptionLookup =
+  | { ok: true; doc: { id: string; name: string } }
+  | { ok: false; reason: string }
+
+// Finds the transcription doc inside a meeting folder (resolves shortcuts).
+// Returns a reason when nothing usable is found so the caller can report it instead of silently skipping.
+export async function findTranscriptionDoc(folderId: string): Promise<TranscriptionLookup> {
+  const auth = getAuth()
+  const drive = google.drive({ version: 'v3', auth })
+
+  const files: any[] = []
+  let pageToken: string | undefined
+  do {
+    const res: any = await drive.files.list({
+      q: `'${folderId}' in parents and trashed=false`,
+      fields: 'nextPageToken,files(id,name,mimeType,shortcutDetails)',
+      pageSize: 100,
+      pageToken,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    })
+    files.push(...(res.data.files || []))
+    pageToken = res.data.nextPageToken || undefined
+  } while (pageToken)
+
+  console.log(`[findTranscriptionDoc] folderId=${folderId} → ${files.length} arquivos: ${files.map((f) => `${f.name}(${f.mimeType})`).join(', ')}`)
+
+  if (files.length === 0) return { ok: false, reason: 'pasta vazia (ou sem permissão de leitura para a service account)' }
+
+  const candidates: { id: string; name: string }[] = []
+  let unresolvedShortcuts = 0
 
   for (const file of files) {
-    // Direct Google Doc in folder
-    if (file.mimeType === 'application/vnd.google-apps.document') {
-      return { id: file.id!, name: file.name! }
-    }
-    // Shortcut pointing to a Google Doc (e.g. "Anotações do Gemini")
-    if (file.mimeType === 'application/vnd.google-apps.shortcut') {
-      const details = (file as any).shortcutDetails
-      if (details?.targetId && details?.targetMimeType === 'application/vnd.google-apps.document') {
-        return { id: details.targetId, name: file.name! }
+    if (file.mimeType === DOC) {
+      candidates.push({ id: file.id, name: file.name })
+    } else if (file.mimeType === SHORTCUT) {
+      const d = file.shortcutDetails
+      // targetMimeType can be missing when the service account has no access to the target,
+      // so only discard shortcuts that are known to point to something else.
+      if (d?.targetId && (!d.targetMimeType || d.targetMimeType === DOC)) {
+        candidates.push({ id: d.targetId, name: file.name })
+      } else if (!d?.targetId) {
+        unresolvedShortcuts++
       }
     }
   }
 
-  return null
+  if (candidates.length === 0) {
+    return {
+      ok: false,
+      reason: unresolvedShortcuts
+        ? 'atalho sem destino acessível (compartilhe o documento original com a service account)'
+        : 'nenhum Google Doc/atalho de Doc na pasta',
+    }
+  }
+
+  // Prefer Gemini notes / transcripts when there are several docs
+  const score = (n: string) => (/gemini|anota|notes|transcri/i.test(n) ? 1 : 0)
+  candidates.sort((a, b) => score(b.name) - score(a.name))
+  return { ok: true, doc: candidates[0] }
 }
 
+function textFromElements(elements: any[] = []): string {
+  let out = ''
+  for (const el of elements) {
+    if (el.paragraph) {
+      out += (el.paragraph.elements || []).map((e: any) => e.textRun?.content || '').join('')
+    } else if (el.table) {
+      for (const row of el.table.tableRows || []) {
+        for (const cell of row.tableCells || []) {
+          out += textFromElements(cell.content) + '\t'
+        }
+        out += '\n'
+      }
+    } else if (el.tableOfContents) {
+      out += textFromElements(el.tableOfContents.content)
+    }
+  }
+  return out
+}
+
+function textFromTabs(tabs: any[] = []): string {
+  return tabs
+    .map((t) => {
+      const own = textFromElements(t.documentTab?.body?.content)
+      return [own, textFromTabs(t.childTabs)].filter(Boolean).join('\n')
+    })
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+// Reads a Google Doc including ALL tabs (Gemini notes put the transcript in a separate tab)
+// and table contents. Falls back to Drive's plain-text export if the Docs API fails.
 export async function readDocContent(docId: string): Promise<string> {
   const auth = getAuth()
   const docs = google.docs({ version: 'v1', auth })
 
-  const res = await docs.documents.get({ documentId: docId })
-  const body = res.data.body?.content || []
+  try {
+    const res = await docs.documents.get({ documentId: docId, includeTabsContent: true })
+    const text = res.data.tabs?.length
+      ? textFromTabs(res.data.tabs)
+      : textFromElements(res.data.body?.content || [])
+    if (text.trim()) return text.trim()
+  } catch (err: any) {
+    console.warn(`[readDocContent] Docs API falhou para ${docId}: ${err.message} — tentando export do Drive`)
+  }
 
-  const text = body
-    .flatMap((el: any) => el.paragraph?.elements || [])
-    .map((el: any) => el.textRun?.content || '')
-    .join('')
-
-  return text.trim()
+  const drive = google.drive({ version: 'v3', auth })
+  const exp = await drive.files.export({ fileId: docId, mimeType: 'text/plain' }, { responseType: 'text' })
+  return String(exp.data || '').trim()
 }
 
 export async function readSheetClients(sheetId: string): Promise<string[]> {

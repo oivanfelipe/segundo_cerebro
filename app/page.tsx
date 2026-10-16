@@ -121,13 +121,19 @@ export default function Home() {
       const data = await res.json()
       if (data.error) setSyncMsg(`Erro: ${data.error}`)
       else if (data.message) setSyncMsg(data.message)
-      else setSyncMsg(`${data.synced} reunião(ões) sincronizada(s), ${data.tasks_created ?? 0} tarefa(s) criada(s)`)
+      else {
+        const errs: string[] = data.errors || []
+        setSyncMsg(
+          `${data.synced} reunião(ões) sincronizada(s), ${data.tasks_created ?? 0} tarefa(s) criada(s)` +
+          (errs.length ? ` · ${errs.length} não lida(s): ${errs.slice(0, 3).join(' | ')}` : '')
+        )
+      }
       await loadAll()
     } catch (e: any) {
       setSyncMsg(`Erro: ${e.message}`)
     } finally {
       setSyncing(false)
-      setTimeout(() => setSyncMsg(''), 6000)
+      setTimeout(() => setSyncMsg(''), 15000)
     }
   }
 
