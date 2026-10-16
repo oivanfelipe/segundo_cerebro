@@ -107,7 +107,7 @@ export default function MeetingDetailPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
           {meeting.client_meeting_insights.map((insight) => (
             <div key={insight.id} className="block">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--sp-4)', marginBottom: 'var(--sp-3)' }}>
+              <div className="row-wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--sp-4)', marginBottom: 'var(--sp-3)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
                   <span className={insight.client_id ? 'tag tag-active' : 'tag'}>
                     {insight.clients?.name || 'SEM CLIENTE'}

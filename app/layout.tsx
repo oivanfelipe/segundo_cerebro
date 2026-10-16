@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import Link from 'next/link'
 import './globals.css'
 
@@ -7,38 +7,30 @@ export const metadata: Metadata = {
   description: 'Resumo de reuniões e compilado de clientes',
 }
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#0A1F44',
+}
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
       <body>
-        <div style={{ display: 'flex', minHeight: '100vh' }}>
-          <nav
-            style={{
-              width: 220,
-              flexShrink: 0,
-              background: 'var(--navy)',
-              color: 'var(--white)',
-              padding: 'var(--sp-6) var(--sp-4)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 'var(--sp-2)',
-            }}
-          >
-            <Link href="/" style={{ textDecoration: 'none' }}>
-              <div
-                className="display"
-                style={{ color: 'var(--white)', fontSize: 20, marginBottom: 'var(--sp-8)' }}
-              >
-                SEGUNDO
-                <br />
-                CÉREBRO
-              </div>
+        <div className="app-shell">
+          <nav className="app-nav">
+            <Link href="/" className="app-brand display">
+              SEGUNDO
+              <br />
+              CÉREBRO
             </Link>
-            <NavLink href="/" label="Dashboard" />
-            <NavLink href="/clients" label="Clientes" />
-            <NavLink href="/meetings" label="Reuniões" />
+            <div className="app-links">
+              <NavLink href="/" label="Dashboard" />
+              <NavLink href="/clients" label="Clientes" />
+              <NavLink href="/meetings" label="Reuniões" />
+            </div>
           </nav>
-          <main style={{ flex: 1, minWidth: 0, padding: 'var(--sp-8)' }}>{children}</main>
+          <main className="app-main">{children}</main>
         </div>
       </body>
     </html>
@@ -47,17 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
 function NavLink({ href, label }: { href: string; label: string }) {
   return (
-    <Link
-      href={href}
-      className="eyebrow"
-      style={{
-        display: 'block',
-        color: 'var(--white)',
-        textDecoration: 'none',
-        padding: 'var(--sp-2) var(--sp-3)',
-        borderRadius: 4,
-      }}
-    >
+    <Link href={href} className="eyebrow nav-link">
       {label}
     </Link>
   )

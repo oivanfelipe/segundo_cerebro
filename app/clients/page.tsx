@@ -27,7 +27,7 @@ export default function ClientsPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-6)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--sp-4)' }}>
+      <div className="row-wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--sp-4)' }}>
         <h1>CLIENTES</h1>
         <Link href="/clients/new" className="btn btn-primary">
           + ADICIONAR CLIENTE
@@ -58,7 +58,7 @@ export default function ClientsPage() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 'var(--sp-4)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(240px, 100%), 1fr))', gap: 'var(--sp-4)' }}>
         {filtered.map((c) => (
           <Link key={c.id} href={`/clients/${c.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
             <div className="block" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>

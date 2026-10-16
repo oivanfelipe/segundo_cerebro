@@ -43,7 +43,7 @@ export default function MeetingsPage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
         {meetings.map((m) => (
           <div key={m.processed_doc_id} className="block" style={{ padding: 'var(--sp-4)' }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--sp-4)' }}>
+            <div className="row-wrap" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--sp-4)' }}>
               <div>
                 {m.meeting_id ? (
                   <Link href={`/meetings/${m.meeting_id}`} style={{ fontWeight: 600, textDecoration: 'none', color: 'inherit' }}>
