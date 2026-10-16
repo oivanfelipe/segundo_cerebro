@@ -99,7 +99,7 @@ export default function Dashboard() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-8)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--sp-4)' }}>
+      <div className="row-wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--sp-4)' }}>
         <h1>DASHBOARD</h1>
         <button className="btn btn-primary" onClick={runSync} disabled={syncing}>
           {syncing ? 'SINCRONIZANDO…' : 'SINCRONIZAR AGORA'}
@@ -158,9 +158,10 @@ export default function Dashboard() {
       )}
 
       <div
+        className="stat-grid"
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))',
           gap: 'var(--sp-6)',
         }}
       >
@@ -189,7 +190,7 @@ export default function Dashboard() {
               style={{ textDecoration: 'none', color: 'inherit' }}
             >
               <div
-                className="block"
+                className="block row-wrap"
                 style={{
                   padding: 'var(--sp-4)',
                   display: 'flex',

@@ -82,7 +82,7 @@ export default function ClientCompiledPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-8)' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--sp-4)' }}>
+      <div className="row-wrap" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--sp-4)' }}>
         <div>
           <h1 style={{ textTransform: 'uppercase' }}>{client.name}</h1>
           <div style={{ display: 'flex', gap: 'var(--sp-2)', marginTop: 'var(--sp-2)', flexWrap: 'wrap' }}>
@@ -113,7 +113,7 @@ export default function ClientCompiledPage() {
       </div>
 
       {(decisions.length > 0 || openItems.length > 0) && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 'var(--sp-6)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: 'var(--sp-6)' }}>
           <div>
             <h2 style={{ marginBottom: 'var(--sp-4)' }}>PENDÊNCIAS</h2>
             <div className="block-yellow" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
@@ -181,7 +181,7 @@ export default function ClientCompiledPage() {
               style={{ textDecoration: 'none', color: 'inherit' }}
             >
               <div className="block" style={{ padding: 'var(--sp-4)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--sp-4)' }}>
+                <div className="row-wrap" style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--sp-4)' }}>
                   <div style={{ fontWeight: 600 }}>{t.meeting_name || 'Reunião'}</div>
                   {t.meeting_date && (
                     <div style={{ fontSize: 12, color: 'var(--muted)' }}>{t.meeting_date}</div>
