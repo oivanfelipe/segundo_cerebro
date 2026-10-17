@@ -3,7 +3,12 @@ import { createClient } from '@supabase/supabase-js'
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co'
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
 
-export const supabase = createClient(url, key)
+// O Next 14 guarda em cache (Data Cache) as chamadas fetch feitas nas rotas, inclusive os GETs do
+// PostgREST — e o cache sobrevive entre invocações. Sem isso, a lista de reuniões continuava
+// mostrando status antigos ("error") depois de o sync corrigir o banco.
+export const supabase = createClient(url, key, {
+  global: { fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }) },
+})
 
 export type ClientStatus = 'active' | 'paused'
 
