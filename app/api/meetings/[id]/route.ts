@@ -10,7 +10,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     .from('meeting_summaries')
     .select(
       `id, doc_name, meeting_date, overall_summary, participants, created_at,
-       client_meeting_insights ( id, client_id, context_summary, key_decisions, open_items, assigned_by, clients ( id, name ) )`
+       client_meeting_insights ( id, client_id, context_summary, key_decisions, open_items, assigned_by, clients ( id, name, account_manager, social_media, traffic_manager, designer ) )`
     )
     .eq('id', params.id)
     .single()

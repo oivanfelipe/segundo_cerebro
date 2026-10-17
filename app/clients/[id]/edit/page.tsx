@@ -17,7 +17,10 @@ export default async function EditClientPage({ params }: { params: { id: string 
           id: client.id,
           name: client.name,
           contact: client.contact || '',
-          segment: client.segment || '',
+          account_manager: client.account_manager || '',
+          social_media: client.social_media || '',
+          traffic_manager: client.traffic_manager || '',
+          designer: client.designer || '',
           status: client.status,
         }}
       />

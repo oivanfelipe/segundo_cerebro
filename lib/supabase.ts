@@ -16,7 +16,10 @@ export type Client = {
   id: string
   name: string
   contact: string | null
-  segment: string | null
+  account_manager: string | null
+  social_media: string | null
+  traffic_manager: string | null
+  designer: string | null
   status: ClientStatus
   accumulated_summary: string | null
   accumulated_summary_updated_at: string | null

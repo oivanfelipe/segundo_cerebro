@@ -2,19 +2,31 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { OWNER_FIELDS } from '@/lib/owners'
 
 export type ClientFormValues = {
   id?: string
   name: string
   contact: string
-  segment: string
+  account_manager: string
+  social_media: string
+  traffic_manager: string
+  designer: string
   status: 'active' | 'paused'
 }
 
 export default function ClientForm({ initial }: { initial?: ClientFormValues }) {
   const router = useRouter()
   const [values, setValues] = useState<ClientFormValues>(
-    initial || { name: '', contact: '', segment: '', status: 'active' }
+    initial || {
+      name: '',
+      contact: '',
+      account_manager: '',
+      social_media: '',
+      traffic_manager: '',
+      designer: '',
+      status: 'active',
+    }
   )
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -84,14 +96,16 @@ export default function ClientForm({ initial }: { initial?: ClientFormValues }) 
           style={{ width: '100%' }}
         />
       </Field>
-      <Field label="Segmento">
-        <input
-          value={values.segment}
-          onChange={(e) => setValues((v) => ({ ...v, segment: e.target.value }))}
-          placeholder="Ex: Têxtil, Saúde, Varejo"
-          style={{ width: '100%' }}
-        />
-      </Field>
+      {OWNER_FIELDS.map((f) => (
+        <Field key={f.key} label={f.label}>
+          <input
+            value={values[f.key]}
+            onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+            placeholder="Nome de quem cuida (deixe vazio se não houver)"
+            style={{ width: '100%' }}
+          />
+        </Field>
+      ))}
       <Field label="Status">
         <select
           value={values.status}

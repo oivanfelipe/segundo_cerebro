@@ -2,12 +2,16 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import Owners from './Owners'
 
 type Client = {
   id: string
   name: string
   contact: string | null
-  segment: string | null
+  account_manager: string | null
+  social_media: string | null
+  traffic_manager: string | null
+  designer: string | null
   status: 'active' | 'paused'
 }
 
@@ -63,7 +67,7 @@ export default function ClientsPage() {
           <Link key={c.id} href={`/clients/${c.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
             <div className="block" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
               <div style={{ fontWeight: 700, fontFamily: 'var(--f-display)' }}>{c.name}</div>
-              {c.segment && <div style={{ fontSize: 13, color: 'var(--muted)' }}>{c.segment}</div>}
+              <Owners owners={c} compact />
               {c.status === 'paused' && <span className="tag">PAUSADO</span>}
             </div>
           </Link>
