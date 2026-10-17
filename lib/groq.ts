@@ -18,6 +18,39 @@ export interface MeetingAnalysis {
   }[]
 }
 
+
+// Limite de tokens por minuto (TPM) do plano on_demand do modelo é baixo (8.000), e a conta
+// "Requested" soma entrada + max_tokens. Mantemos cada requisição bem abaixo disso:
+// ~14.000 caracteres de entrada (~4-5k tokens) + 2.500 de saída. Docs do Gemini trazem
+// resumo/decisões/próximas etapas na primeira aba e a transcrição bruta depois, então o
+// início do conteúdo é a parte de maior valor.
+const MAX_INPUT_CHARS = 14000
+const ANALYSIS_MAX_TOKENS = 2500
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+type ChatParams = Parameters<typeof groq.chat.completions.create>[0]
+
+// Chama a Groq esperando a janela de TPM liberar (429) em vez de falhar a reunião.
+// 413 (requisição maior que o limite) não melhora esperando: propaga para o chamador.
+async function chat(params: ChatParams) {
+  let lastErr: unknown
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      return (await groq.chat.completions.create({ ...params, stream: false })) as {
+        choices: { message?: { content?: string | null } }[]
+      }
+    } catch (err) {
+      lastErr = err
+      const e = err as { status?: number; headers?: Record<string, string> }
+      if (e.status !== 429) throw err
+      const retryAfter = Number(e.headers?.['retry-after'])
+      await sleep((Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 20) * 1000 + 500)
+    }
+  }
+  throw lastErr
+}
+
 function extractJson<T>(raw: string): T {
   try {
     return JSON.parse(raw) as T
@@ -42,7 +75,7 @@ Lista de clientes conhecidos (a reunião pode mencionar zero, um ou vários dest
 ${knownClients.join(', ')}
 
 Conteúdo da reunião:
-${content.slice(0, 100000)}
+${content.slice(0, MAX_INPUT_CHARS)}
 
 Retorne APENAS um JSON válido (sem markdown, sem explicação) com esta estrutura exata:
 {
@@ -61,11 +94,11 @@ Retorne APENAS um JSON válido (sem markdown, sem explicação) com esta estrutu
 
 Se nenhum cliente da lista foi mencionado, retorne "clients": [].`
 
-  const completion = await groq.chat.completions.create({
+  const completion = await chat({
     model: MODEL,
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.2,
-    max_tokens: 6000,
+    max_tokens: ANALYSIS_MAX_TOKENS,
     // gpt-oss é um modelo de raciocínio — "low" mantém o orçamento de tokens de
     // pensamento baixo o suficiente para sobrar espaço pro JSON de resposta.
     reasoning_effort: 'low',
@@ -110,7 +143,7 @@ ${historyText}
 
 Escreva um resumo geral acumulado (4-8 frases) que capture: o estado atual do relacionamento/projeto, os principais temas recorrentes, decisões que ainda valem hoje (ignore decisões claramente substituídas por decisões posteriores) e pendências ainda em aberto. Não liste reunião por reunião — sintetize. Responda só com o texto do resumo, sem markdown, sem título.`
 
-  const completion = await groq.chat.completions.create({
+  const completion = await chat({
     model: MODEL,
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.3,

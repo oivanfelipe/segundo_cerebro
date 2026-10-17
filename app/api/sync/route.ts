@@ -15,6 +15,11 @@ const SYNC_WINDOW_DAYS = 7
 // lotes pequenos; o cliente (botão "Sincronizar agora") repete a chamada até zerar.
 const BATCH_SIZE = 15
 
+// Com o limite de tokens/minuto da Groq cada reunião pode esperar a janela liberar; para não
+// estourar o maxDuration da função, para de abrir novas reuniões após esse orçamento de
+// tempo — o que sobrar fica pendente e o botão "Sincronizar agora" repete a chamada.
+const TIME_BUDGET_MS = 200_000
+
 function matchClient(
   clientList: { id: string; name: string }[],
   name: string
@@ -56,7 +61,8 @@ export async function POST() {
   const ordered = [...neverAttempted, ...previouslyErrored]
 
   const newFolders = ordered.slice(0, BATCH_SIZE)
-  const remaining = ordered.length - newFolders.length
+  const startedAt = Date.now()
+  let attempted = 0
 
   const { data: clients } = await supabase
     .from('clients')
@@ -71,6 +77,8 @@ export async function POST() {
   const affectedClientIds = new Set<string>()
 
   for (const folder of newFolders) {
+    if (Date.now() - startedAt > TIME_BUDGET_MS) break
+    attempted++
     const folderId = folder.id!
     const folderName = folder.name || 'Reunião sem nome'
 
@@ -151,8 +159,8 @@ export async function POST() {
 
   return NextResponse.json({
     synced,
-    skipped: newFolders.length - synced - errors.length,
-    remaining,
+    skipped: attempted - synced - errors.length,
+    remaining: ordered.length - attempted,
     errors,
   })
 }
