@@ -25,7 +25,10 @@ export async function POST(req: NextRequest) {
     .insert({
       name: body.name.trim(),
       contact: body.contact || null,
-      segment: body.segment || null,
+      account_manager: body.account_manager?.trim() || null,
+      social_media: body.social_media?.trim() || null,
+      traffic_manager: body.traffic_manager?.trim() || null,
+      designer: body.designer?.trim() || null,
       status: body.status === 'paused' ? 'paused' : 'active',
     })
     .select()

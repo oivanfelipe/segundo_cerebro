@@ -16,7 +16,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
   if (typeof body.name === 'string' && body.name.trim()) update.name = body.name.trim()
   if ('contact' in body) update.contact = body.contact || null
-  if ('segment' in body) update.segment = body.segment || null
+  for (const key of ['account_manager', 'social_media', 'traffic_manager', 'designer']) {
+    if (key in body) update[key] = typeof body[key] === 'string' && body[key].trim() ? body[key].trim() : null
+  }
   if (body.status === 'active' || body.status === 'paused') update.status = body.status
 
   const { data, error } = await supabase

@@ -3,13 +3,17 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
+import Owners from '../Owners'
 
 type Compiled = {
   client: {
     id: string
     name: string
     contact: string | null
-    segment: string | null
+    account_manager: string | null
+    social_media: string | null
+    traffic_manager: string | null
+    designer: string | null
     status: 'active' | 'paused'
     accumulated_summary: string | null
     accumulated_summary_updated_at: string | null
@@ -86,10 +90,12 @@ export default function ClientCompiledPage() {
         <div>
           <h1 style={{ textTransform: 'uppercase' }}>{client.name}</h1>
           <div style={{ display: 'flex', gap: 'var(--sp-2)', marginTop: 'var(--sp-2)', flexWrap: 'wrap' }}>
-            {client.segment && <span className="tag">{client.segment}</span>}
             <span className={client.status === 'active' ? 'tag tag-active' : 'tag'}>
               {client.status === 'active' ? 'ATIVO' : 'PAUSADO'}
             </span>
+          </div>
+          <div style={{ marginTop: 'var(--sp-3)' }}>
+            <Owners owners={client} />
           </div>
           {client.contact && <p style={{ color: 'var(--muted)', marginTop: 'var(--sp-2)' }}>{client.contact}</p>}
         </div>

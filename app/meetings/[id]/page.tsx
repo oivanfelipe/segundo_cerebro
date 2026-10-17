@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
+import Owners from '../../clients/Owners'
+import type { Owners as OwnersData } from '@/lib/owners'
 
 type Client = { id: string; name: string }
 type OpenItem = { text: string; done: boolean; done_at: string | null }
@@ -12,7 +14,7 @@ type Insight = {
   key_decisions: string[]
   open_items: OpenItem[]
   assigned_by: 'ai' | 'manual'
-  clients: { id: string; name: string } | null
+  clients: ({ id: string; name: string } & OwnersData) | null
 }
 
 function formatDate(iso: string) {
@@ -127,6 +129,11 @@ export default function MeetingDetailPage() {
                   ))}
                 </select>
               </div>
+              {insight.clients && (
+                <div style={{ marginBottom: 'var(--sp-3)' }}>
+                  <Owners owners={insight.clients} />
+                </div>
+              )}
               <p style={{ margin: '0 0 var(--sp-3)', fontSize: 13 }}>{insight.context_summary}</p>
               {insight.key_decisions.length > 0 && (
                 <div style={{ marginBottom: 'var(--sp-2)' }}>
