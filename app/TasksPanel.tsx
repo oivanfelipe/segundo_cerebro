@@ -81,12 +81,24 @@ export default function TasksPanel({ clientId, refreshKey = 0 }: { clientId?: st
   }
 
   async function remove(task: Task) {
-    if (task.source !== 'manual' || !window.confirm(`Excluir a tarefa "${task.title}"?`)) return
+    if (!window.confirm(`Excluir a tarefa "${task.title}"?`)) return
     setBusyKey(task.key)
+    setError(null)
     try {
-      await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' })
-      await load()
+      const res =
+        task.source === 'manual'
+          ? await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' })
+          : await fetch(`/api/insights/${task.insight_id}/open-items`, {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ index: task.index }),
+            })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Erro ao excluir a tarefa.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao excluir a tarefa.')
     } finally {
+      // recarrega sempre: ao excluir uma pendência de reunião os índices dos demais mudam
+      await load()
       setBusyKey(null)
     }
   }
@@ -244,17 +256,15 @@ function TaskRow({
         </div>
         {task.client && <Owners owners={task.client} compact />}
       </div>
-      {task.source === 'manual' && (
-        <button
-          onClick={() => onRemove(task)}
-          disabled={busy}
-          aria-label="Excluir tarefa"
-          title="Excluir tarefa"
-          style={{ background: 'none', border: 'none', fontSize: 18, lineHeight: 1, color: 'var(--muted)', minHeight: 0, padding: 4 }}
-        >
-          ×
-        </button>
-      )}
+      <button
+        onClick={() => onRemove(task)}
+        disabled={busy}
+        aria-label="Excluir tarefa"
+        title="Excluir tarefa"
+        style={{ background: 'none', border: 'none', fontSize: 20, lineHeight: 1, color: 'var(--muted)', minHeight: 44, minWidth: 32, padding: 4 }}
+      >
+        ×
+      </button>
     </div>
   )
 }
