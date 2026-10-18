@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { listMeetingFolders, findTranscriptionDoc, readDocContent } from '@/lib/google'
 import { analyzeMeeting } from '@/lib/groq'
 import { refreshClientAccumulatedSummary } from '@/lib/compiled'
+import { parseMeetingDate } from '@/lib/dates'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -116,7 +117,8 @@ export async function POST() {
         .insert({
           processed_doc_id: processedDoc.id,
           doc_name: folderName,
-          meeting_date: analysis.meeting_date,
+          // a data do nome do Doc/pasta é confiável; a da IA só entra se não houver data no nome
+          meeting_date: parseMeetingDate(doc.name, folderName) ?? analysis.meeting_date,
           overall_summary: analysis.overall_summary,
           participants: analysis.participants,
         })

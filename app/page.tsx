@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
+import TasksPanel from './TasksPanel'
 
 type Client = { id: string; name: string; status: 'active' | 'paused' }
 type Meeting = {
@@ -25,6 +26,7 @@ export default function Dashboard() {
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
   const [googleStatus, setGoogleStatus] = useState<GoogleStatus | null>(null)
   const [googleMessage, setGoogleMessage] = useState<string | null>(null)
+  const [tasksVersion, setTasksVersion] = useState(0)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -79,6 +81,7 @@ export default function Dashboard() {
           `Sincronizando… ${totalSynced} reunião(ões) processada(s)${totalErrors ? `, ${totalErrors} com erro` : ''}.`
         )
         await load()
+        setTasksVersion((v) => v + 1)
         if (!data.remaining) {
           setSyncMessage(
             `${totalSynced} reunião(ões) sincronizada(s)${totalErrors ? `, ${totalErrors} com erro` : ''}.`
@@ -156,6 +159,8 @@ export default function Dashboard() {
           </a>
         </div>
       )}
+
+      <TasksPanel refreshKey={tasksVersion} />
 
       <div
         className="stat-grid"
