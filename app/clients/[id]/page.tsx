@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import Owners from '../Owners'
+import TasksPanel from '../../TasksPanel'
 
 type Compiled = {
   client: {
@@ -39,16 +40,11 @@ type Compiled = {
   }[]
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('pt-BR')
-}
-
 export default function ClientCompiledPage() {
   const params = useParams<{ id: string }>()
   const [data, setData] = useState<Compiled | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
-  const [togglingKey, setTogglingKey] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const r = await fetch(`/api/clients/${params.id}/compiled`)
@@ -64,25 +60,10 @@ export default function ClientCompiledPage() {
     load().finally(() => setLoading(false))
   }, [load])
 
-  async function toggleOpenItem(insightId: string, index: number, done: boolean) {
-    const key = `${insightId}:${index}`
-    setTogglingKey(key)
-    try {
-      await fetch(`/api/insights/${insightId}/open-items`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ index, done }),
-      })
-      await load()
-    } finally {
-      setTogglingKey(null)
-    }
-  }
-
   if (loading) return <p>Carregando…</p>
   if (notFound || !data) return <p>Cliente não encontrado.</p>
 
-  const { client, timeline, decisions, open_items: openItems } = data
+  const { client, timeline, decisions } = data
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-8)' }}>
@@ -118,60 +99,18 @@ export default function ClientCompiledPage() {
         </div>
       </div>
 
-      {(decisions.length > 0 || openItems.length > 0) && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))', gap: 'var(--sp-6)' }}>
-          <div>
-            <h2 style={{ marginBottom: 'var(--sp-4)' }}>PENDÊNCIAS</h2>
-            <div className="block-yellow" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
-              {openItems.length === 0 && <p style={{ margin: 0 }}>Nenhuma pendência em aberto.</p>}
-              {openItems.map((o) => {
-                const key = `${o.insight_id}:${o.index}`
-                return (
-                  <label
-                    key={key}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: 'var(--sp-2)',
-                      cursor: 'pointer',
-                      opacity: togglingKey === key ? 0.5 : 1,
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={o.done}
-                      disabled={togglingKey === key}
-                      onChange={(e) => toggleOpenItem(o.insight_id, o.index, e.target.checked)}
-                      style={{ marginTop: 3 }}
-                    />
-                    <span style={{ textDecoration: o.done ? 'line-through' : 'none' }}>
-                      {o.item}
-                      {o.meeting_date && <span style={{ fontSize: 11 }}> ({o.meeting_date})</span>}
-                      {o.done && o.done_at && (
-                        <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-                          {' '}
-                          — concluído em {formatDate(o.done_at)}
-                        </span>
-                      )}
-                    </span>
-                  </label>
-                )
-              })}
-            </div>
-          </div>
-          <div>
-            <h2 style={{ marginBottom: 'var(--sp-4)' }}>DECISÕES</h2>
-            <div className="block" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
-              {decisions.length === 0 && <p style={{ margin: 0 }}>Nenhuma decisão registrada.</p>}
-              {decisions.map((d, i) => (
-                <div key={i}>
-                  • {d.item}
-                  {d.meeting_date && (
-                    <span style={{ fontSize: 11, color: 'var(--muted)' }}> ({d.meeting_date})</span>
-                  )}
-                </div>
-              ))}
-            </div>
+      <TasksPanel clientId={client.id} />
+
+      {decisions.length > 0 && (
+        <div>
+          <h2 style={{ marginBottom: 'var(--sp-4)' }}>DECISÕES</h2>
+          <div className="block" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+            {decisions.map((d, i) => (
+              <div key={i}>
+                • {d.item}
+                {d.meeting_date && <span style={{ fontSize: 11, color: 'var(--muted)' }}> ({d.meeting_date})</span>}
+              </div>
+            ))}
           </div>
         </div>
       )}
