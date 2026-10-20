@@ -11,6 +11,51 @@ const SUGGESTIONS = [
   'Quantas tarefas tem os clientes da Fulana?',
 ]
 
+// Ícones SVG inline (sem emoji): herdam a cor do texto/botão onde estão.
+type IconProps = { size?: number }
+const svg = (size: number) => ({
+  width: size,
+  height: size,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 2.4,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+  'aria-hidden': true,
+  focusable: false,
+  style: { flexShrink: 0 },
+})
+const MicIcon = ({ size = 16 }: IconProps) => (
+  <svg {...svg(size)}>
+    <rect x="9" y="2.5" width="6" height="11" rx="3" />
+    <path d="M5 11a7 7 0 0 0 14 0M12 18v3.5" />
+  </svg>
+)
+const StopIcon = ({ size = 16 }: IconProps) => (
+  <svg {...svg(size)}>
+    <rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor" />
+  </svg>
+)
+const SendIcon = ({ size = 16 }: IconProps) => (
+  <svg {...svg(size)}>
+    <path d="M4 12h15M13 6l6 6-6 6" />
+  </svg>
+)
+const CheckIcon = ({ size = 12 }: IconProps) => (
+  <svg {...svg(size)}>
+    <path d="M5 12.5l4.5 4.5L19 7.5" />
+  </svg>
+)
+const AlertIcon = ({ size = 12 }: IconProps) => (
+  <svg {...svg(size)}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7.5v5.5M12 16.5v.01" />
+  </svg>
+)
+
+const tagIcon = { display: 'inline-flex', alignItems: 'center', gap: 4, marginRight: 'var(--sp-2)' } as const
+
 const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
 function pickMime() {
@@ -130,13 +175,23 @@ export default function ChatPanel() {
         {msgs.map((m, i) => (
           <div key={i} className={`chat-msg ${m.role === 'user' ? 'chat-msg-user' : ''}`}>
             <div className={`chat-bubble ${m.role === 'user' ? 'chat-bubble-user' : ''} ${m.error ? 'chat-bubble-error' : ''}`}>
-              {m.error && <span className="tag" style={{ marginRight: 'var(--sp-2)' }}>Erro</span>}
-              {m.voice && <span className="tag tag-active" style={{ marginRight: 'var(--sp-2)' }}>Áudio</span>}
+              {m.error && (
+                <span className="tag" style={tagIcon}>
+                  <AlertIcon /> Erro
+                </span>
+              )}
+              {m.voice && (
+                <span className="tag tag-active" style={tagIcon}>
+                  <MicIcon size={12} /> Áudio
+                </span>
+              )}
               {m.text}
             </div>
             {m.created?.map((t) => (
               <div key={t.id} className="chat-bubble" style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
-                <span className="tag tag-active">Tarefa criada</span>
+                <span className="tag tag-active" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <CheckIcon /> Tarefa criada
+                </span>
                 <strong>{t.title}</strong>
                 <span style={{ color: 'var(--muted)' }}>· {t.client_name}</span>
               </div>
@@ -177,10 +232,12 @@ export default function ChatPanel() {
           disabled={disabled}
           title={recording ? 'Parar e enviar' : 'Gravar áudio'}
         >
+          {recording ? <StopIcon /> : <MicIcon />}
           {recording ? 'Parar' : 'Gravar'}
         </button>
         {!recording && (
           <button className="btn btn-primary" onClick={submit} disabled={disabled || !input.trim()}>
+            <SendIcon />
             Enviar
           </button>
         )}
