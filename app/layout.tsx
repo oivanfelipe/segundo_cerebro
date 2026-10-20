@@ -28,6 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <NavLink href="/" label="Dashboard" />
               <NavLink href="/clients" label="Clientes" />
               <NavLink href="/meetings" label="Reuniões" />
+              <NavLink href="/chat" label="Chat" />
             </div>
           </nav>
           <main className="app-main">{children}</main>
