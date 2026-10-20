@@ -33,13 +33,11 @@ type ChatParams = Parameters<typeof groq.chat.completions.create>[0]
 
 // Chama a Groq esperando a janela de TPM liberar (429) em vez de falhar a reunião.
 // 413 (requisição maior que o limite) não melhora esperando: propaga para o chamador.
-async function chat(params: ChatParams) {
+export async function chat(params: ChatParams) {
   let lastErr: unknown
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      return (await groq.chat.completions.create({ ...params, stream: false })) as {
-        choices: { message?: { content?: string | null } }[]
-      }
+      return (await groq.chat.completions.create({ ...params, stream: false })) as Groq.Chat.ChatCompletion
     } catch (err) {
       lastErr = err
       const e = err as { status?: number; headers?: Record<string, string> }
@@ -152,4 +150,19 @@ Escreva um resumo geral acumulado (4-8 frases) que capture: o estado atual do re
   })
 
   return completion.choices[0]?.message?.content?.trim() || ''
+}
+
+export const WHISPER_MODEL = 'whisper-large-v3-turbo'
+
+// `hint` (nomes de clientes/responsáveis) vai como prompt pro Whisper acertar nomes próprios
+export async function transcribeSpeech(file: File, hint?: string): Promise<string> {
+  const result = await groq.audio.transcriptions.create({
+    file,
+    model: WHISPER_MODEL,
+    language: 'pt',
+    response_format: 'json',
+    temperature: 0,
+    prompt: hint ? hint.slice(0, 600) : undefined,
+  })
+  return result.text.trim()
 }

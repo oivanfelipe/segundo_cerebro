@@ -264,3 +264,56 @@ input:focus, textarea:focus, select:focus {
   /* textos longos (nomes de pasta, links) não estouram a tela */
   .block, .block-yellow { overflow-wrap: anywhere; }
 }
+
+/* chat — ocupa a altura da tela; as mensagens rolam e o campo fica fixo embaixo */
+.chat-page { display: flex; flex-direction: column; height: calc(100dvh - var(--sp-16)); min-height: 420px; }
+.chat-box {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surf);
+  border: var(--bw) solid var(--bd);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-block);
+}
+.chat-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.chat-msg { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2); max-width: 85%; }
+.chat-msg-user { align-self: flex-end; align-items: flex-end; }
+.chat-bubble {
+  padding: var(--sp-3) var(--sp-4);
+  border: var(--bw) solid var(--bd);
+  border-radius: var(--radius);
+  background: var(--surf);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.chat-bubble-user { background: var(--yellow); color: var(--yellow-ink); border-color: var(--navy); box-shadow: 3px 3px 0 var(--navy); }
+.chat-bubble-error { border-style: dashed; }
+.chat-input {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-top: var(--bw) solid var(--bd);
+}
+.chat-input textarea { flex: 1; resize: none; }
+.chat-recording { flex: 1; display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; min-height: 44px; }
+.chat-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--yellow); border: var(--bw) solid var(--navy); animation: chat-pulse 1s ease-in-out infinite; }
+@keyframes chat-pulse { 50% { opacity: 0.25; } }
+
+@media (max-width: 768px) {
+  .chat-page { height: calc(100dvh - 88px); }
+  .chat-msg { max-width: 95%; }
+  .chat-input { flex-wrap: wrap; }
+  .chat-input textarea { flex-basis: 100%; }
+  .chat-input .btn { flex: 1; }
+}
