@@ -147,6 +147,94 @@ export async function listMeetingFolders(folderId: string, since?: string): Prom
   return result
 }
 
+// Reunião recorrente: o Google Calendar cria UMA pasta "... (recurring)" e vai guardando ali um
+// doc de notas por ocorrência. A pasta é antiga, mas cada doc dentro dela é uma reunião nova.
+export function isRecurringFolder(name: string): boolean {
+  return /\(recurring\)\s*$/i.test(name.trim())
+}
+
+// Tira o sufixo de notas do Gemini ("... - Anotações do Gemini") para o nome da reunião.
+export function meetingNameFromDoc(docName: string): string {
+  return docName.replace(/\s*-\s*(Anotações do Gemini|Notes by Gemini)(\s*\(.*\))?\s*$/i, '').trim() || docName
+}
+
+// Pastas de reunião recorrente na raiz — sem filtro de data: a pasta nasceu há semanas.
+export async function listRecurringFolders(folderId: string): Promise<DriveFolder[]> {
+  const auth = await getAuthedClient()
+  const drive = google.drive({ version: 'v3', auth })
+
+  const q =
+    `'${folderId}' in parents and (mimeType='${FOLDER}' or mimeType='${SHORTCUT}') ` +
+    `and name contains 'recurring' and trashed=false`
+  const result: DriveFolder[] = []
+  let pageToken: string | undefined
+
+  do {
+    const res: any = await drive.files.list({
+      q,
+      fields: 'nextPageToken,files(id,name,createdTime,mimeType,shortcutDetails)',
+      pageSize: 100,
+      pageToken,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    })
+
+    for (const f of res.data.files || []) {
+      if (!isRecurringFolder(f.name || '')) continue
+      if (f.mimeType === FOLDER) {
+        result.push({ id: f.id, name: f.name, createdTime: f.createdTime })
+      } else if (f.mimeType === SHORTCUT && f.shortcutDetails?.targetMimeType === FOLDER) {
+        result.push({ id: f.shortcutDetails.targetId, name: f.name, createdTime: f.createdTime })
+      }
+    }
+    pageToken = res.data.nextPageToken || undefined
+  } while (pageToken)
+
+  return result
+}
+
+export type DriveDoc = { id: string; name: string; createdTime: string }
+
+// Docs (e atalhos para docs) criados a partir de `since` dentro de uma pasta recorrente:
+// cada um é uma ocorrência da reunião.
+export async function listRecurringDocs(folderId: string, since: string): Promise<DriveDoc[]> {
+  const auth = await getAuthedClient()
+  const drive = google.drive({ version: 'v3', auth })
+
+  const q =
+    `'${folderId}' in parents and trashed=false and createdTime >= '${since}' ` +
+    `and (mimeType='${DOC}' or mimeType='${SHORTCUT}')`
+  const result: DriveDoc[] = []
+  let pageToken: string | undefined
+
+  do {
+    const res: any = await drive.files.list({
+      q,
+      fields: 'nextPageToken,files(id,name,createdTime,mimeType,shortcutDetails)',
+      orderBy: 'createdTime desc',
+      pageSize: 100,
+      pageToken,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    })
+
+    for (const f of res.data.files || []) {
+      if (f.mimeType === DOC) {
+        result.push({ id: f.id, name: f.name, createdTime: f.createdTime })
+      } else if (f.mimeType === SHORTCUT) {
+        const d = f.shortcutDetails
+        // sem targetMimeType = sem acesso ao destino; só descarta o que sabemos que não é Doc
+        if (d?.targetId && (!d.targetMimeType || d.targetMimeType === DOC)) {
+          result.push({ id: d.targetId, name: f.name, createdTime: f.createdTime })
+        }
+      }
+    }
+    pageToken = res.data.nextPageToken || undefined
+  } while (pageToken)
+
+  return result
+}
+
 export type TranscriptionLookup =
   | { ok: true; doc: { id: string; name: string } }
   | { ok: false; reason: string }

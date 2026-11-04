@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { listMeetingFolders, findTranscriptionDoc, readDocContent } from '@/lib/google'
+import {
+  listMeetingFolders,
+  listRecurringFolders,
+  listRecurringDocs,
+  isRecurringFolder,
+  meetingNameFromDoc,
+  findTranscriptionDoc,
+  readDocContent,
+} from '@/lib/google'
 import { analyzeMeeting } from '@/lib/groq'
 import { refreshClientAccumulatedSummary } from '@/lib/compiled'
 import { parseMeetingDate } from '@/lib/dates'
@@ -10,6 +18,15 @@ export const maxDuration = 300
 
 // O sync olha só a última semana de reuniões (janela móvel de 7 dias).
 const SYNC_WINDOW_DAYS = 7
+
+// Pastas "(recurring)" só começaram a ser lidas em 03/11/2026: reuniões anteriores a essa data
+// não entram retroativamente. A trava expira sozinha — passados 7 dias, a janela móvel acima já é
+// mais recente que ela.
+const RECURRING_DOCS_FROM = '2026-11-03T00:00:00-03:00'
+
+// Uma reunião a processar. Pasta comum: a chave é o id da pasta e o doc é descoberto lá dentro.
+// Pasta recorrente: a chave é `pasta:doc`, porque a mesma pasta acumula uma reunião por ocorrência.
+type MeetingUnit = { key: string; name: string; doc?: { id: string; name: string } }
 
 // Cada reunião envolve uma leitura no Drive + uma chamada à Groq — processar um lote
 // grande numa chamada só estoura o limite de tempo da função serverless. Processa em
@@ -43,22 +60,55 @@ export async function POST() {
 
   // Pastas com status 'error' não contam como concluídas — ficam elegíveis para nova
   // tentativa automática no próximo sync (ex: falha temporária de API, chave inválida).
-  const { data: processed } = await supabase.from('processed_docs').select('folder_id, status')
+  const { data: processed } = await supabase.from('processed_docs').select('folder_id, status, processed_at')
   const doneIds = new Set((processed || []).filter((r) => r.status !== 'error').map((r) => r.folder_id))
   const erroredIds = new Set((processed || []).filter((r) => r.status === 'error').map((r) => r.folder_id))
+  const processedAt = new Map(
+    (processed || []).filter((r) => r.status !== 'error').map((r) => [r.folder_id, new Date(r.processed_at).getTime()])
+  )
 
-  const since = new Date(Date.now() - SYNC_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  const sinceMs = Date.now() - SYNC_WINDOW_DAYS * 24 * 60 * 60 * 1000
+  const since = new Date(sinceMs).toISOString()
   const folders = await listMeetingFolders(folderId, since)
-  const pendingFolders = folders.filter((f) => f.id && !doneIds.has(f.id))
+  const pendingUnits: MeetingUnit[] = folders
+    .filter((f) => f.id && !isRecurringFolder(f.name) && !doneIds.has(f.id))
+    .map((f) => ({ key: f.id, name: f.name }))
 
-  if (pendingFolders.length === 0) {
-    return NextResponse.json({ synced: 0, remaining: 0, message: 'Nenhuma reunião nova nos últimos 7 dias.' })
+  // Reuniões recorrentes: a pasta é antiga, então o que vale é a data de cada doc dentro dela.
+  const recurringSince = new Date(Math.max(sinceMs, Date.parse(RECURRING_DOCS_FROM))).toISOString()
+  const discoveryErrors: { folder: string; message: string }[] = []
+  const recurringFolders = await listRecurringFolders(folderId)
+  await Promise.all(
+    recurringFolders.map(async (rf) => {
+      try {
+        for (const doc of await listRecurringDocs(rf.id, recurringSince)) {
+          const key = `${rf.id}:${doc.id}`
+          if (doneIds.has(key)) continue
+          // Antes desta correção a pasta inteira era processada de uma vez (chave = id da pasta).
+          // Se isso aconteceu depois de o doc existir, a reunião já está no banco: não duplicar.
+          const legacy = processedAt.get(rf.id)
+          if (legacy !== undefined && legacy >= Date.parse(doc.createdTime)) continue
+          pendingUnits.push({ key, name: meetingNameFromDoc(doc.name), doc: { id: doc.id, name: doc.name } })
+        }
+      } catch (err) {
+        discoveryErrors.push({ folder: rf.name, message: err instanceof Error ? err.message : 'Erro desconhecido' })
+      }
+    })
+  )
+
+  if (pendingUnits.length === 0) {
+    return NextResponse.json({
+      synced: 0,
+      remaining: 0,
+      errors: discoveryErrors,
+      message: 'Nenhuma reunião nova nos últimos 7 dias.',
+    })
   }
 
-  // Prioriza pastas nunca tentadas — se uma falha persistente (ex: permissão) sempre
+  // Prioriza reuniões nunca tentadas — se uma falha persistente (ex: permissão) sempre
   // caísse no topo do lote, travaria o progresso nas demais pendentes pra sempre.
-  const neverAttempted = pendingFolders.filter((f) => !erroredIds.has(f.id!))
-  const previouslyErrored = pendingFolders.filter((f) => erroredIds.has(f.id!))
+  const neverAttempted = pendingUnits.filter((u) => !erroredIds.has(u.key))
+  const previouslyErrored = pendingUnits.filter((u) => erroredIds.has(u.key))
   const ordered = [...neverAttempted, ...previouslyErrored]
 
   const newFolders = ordered.slice(0, BATCH_SIZE)
@@ -74,17 +124,17 @@ export async function POST() {
   const clientNames = clientList.map((c) => c.name)
 
   let synced = 0
-  const errors: { folder: string; message: string }[] = []
+  const errors: { folder: string; message: string }[] = [...discoveryErrors]
   const affectedClientIds = new Set<string>()
 
-  for (const folder of newFolders) {
+  for (const unit of newFolders) {
     if (Date.now() - startedAt > TIME_BUDGET_MS) break
     attempted++
-    const folderId = folder.id!
-    const folderName = folder.name || 'Reunião sem nome'
+    const folderId = unit.key
+    const folderName = unit.name || 'Reunião sem nome'
 
     try {
-      const lookup = await findTranscriptionDoc(folderId)
+      const lookup = unit.doc ? ({ ok: true, doc: unit.doc } as const) : await findTranscriptionDoc(folderId)
 
       // Sem doc legível NÃO é "no_transcript" definitivo: pode ser falta de acesso ao destino
       // do atalho ou doc ainda sendo gerado. Vira 'error' (reelegível no próximo sync).
