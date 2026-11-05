@@ -134,6 +134,15 @@ export async function POST() {
     const folderName = unit.name || 'Reunião sem nome'
 
     try {
+      // Outra execução do sync (segundo clique, outra aba) pode ter concluído esta reunião depois
+      // de ela ser listada aqui. Reler o estado evita analisar de novo — e duplicar — o que já foi feito.
+      const { data: current } = await supabase
+        .from('processed_docs')
+        .select('status')
+        .eq('folder_id', folderId)
+        .maybeSingle()
+      if (current && current.status !== 'error') continue
+
       const lookup = unit.doc ? ({ ok: true, doc: unit.doc } as const) : await findTranscriptionDoc(folderId)
 
       // Sem doc legível NÃO é "no_transcript" definitivo: pode ser falta de acesso ao destino
@@ -161,6 +170,15 @@ export async function POST() {
         .single()
 
       if (processedDocError || !processedDoc) throw new Error(processedDocError?.message)
+
+      // Última barreira: a análise leva dezenas de segundos e outra execução pode ter gravado o
+      // resumo desta reunião nesse intervalo.
+      const { data: existingSummary } = await supabase
+        .from('meeting_summaries')
+        .select('id')
+        .eq('processed_doc_id', processedDoc.id)
+        .limit(1)
+      if (existingSummary && existingSummary.length > 0) continue
 
       const { data: meetingSummary, error: meetingSummaryError } = await supabase
         .from('meeting_summaries')
