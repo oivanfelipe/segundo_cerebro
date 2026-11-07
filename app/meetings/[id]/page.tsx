@@ -137,7 +137,7 @@ export default function MeetingDetailPage() {
               <p style={{ margin: '0 0 var(--sp-3)', fontSize: 13 }}>{insight.context_summary}</p>
               {insight.key_decisions.length > 0 && (
                 <div style={{ marginBottom: 'var(--sp-2)' }}>
-                  <div className="eyebrow" style={{ color: 'var(--navy)', marginBottom: 4 }}>
+                  <div className="eyebrow" style={{ color: 'var(--blue)', marginBottom: 4 }}>
                     Decisões
                   </div>
                   {insight.key_decisions.map((d, i) => (
@@ -149,7 +149,7 @@ export default function MeetingDetailPage() {
               )}
               {insight.open_items.length > 0 && (
                 <div>
-                  <div className="eyebrow" style={{ color: 'var(--navy)', marginBottom: 4 }}>
+                  <div className="eyebrow" style={{ color: 'var(--blue)', marginBottom: 4 }}>
                     Pendências
                   </div>
                   {insight.open_items.map((o, i) => {

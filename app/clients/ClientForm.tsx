@@ -128,7 +128,7 @@ export default function ClientForm({ initial }: { initial?: ClientFormValues }) 
         </select>
       </Field>
 
-      {error && <p style={{ color: 'var(--navy)', fontWeight: 600 }}>{error}</p>}
+      {error && <p style={{ color: 'var(--blue)', fontWeight: 600 }}>{error}</p>}
 
       <div style={{ display: 'flex', gap: 'var(--sp-3)' }}>
         <button className="btn btn-primary" onClick={save} disabled={saving || deleting}>
@@ -147,7 +147,7 @@ export default function ClientForm({ initial }: { initial?: ClientFormValues }) 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' }}>
-      <span className="eyebrow" style={{ color: 'var(--navy)' }}>
+      <span className="eyebrow" style={{ color: 'var(--blue)' }}>
         {label}
       </span>
       {children}
