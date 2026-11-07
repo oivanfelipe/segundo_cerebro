@@ -80,8 +80,21 @@ async function verificationTaskTypeId(): Promise<number> {
   )
 }
 
+// Confere no Ekyte se a tarefa existe (id numérico real, com o mesmo título e workspace).
+async function taskExists(id: unknown, title: string, workspaceId: number): Promise<boolean> {
+  const n = Number(id)
+  if (!Number.isInteger(n) || n <= 0) return false
+  try {
+    const t = (await callTool('get_detailed_task', { taskId: n })) as Obj
+    return Number(t?.id) === n && String(t?.title ?? '').trim() === title.trim() && Number(t?.workspaceId ?? workspaceId) === workspaceId
+  } catch {
+    return false
+  }
+}
+
 // Cria a tarefa montando o fluxo pelo modelo (useTaskTypeFlow=1, que não aceita executor) e depois
-// troca o executor da etapa atual. Se só a troca falhar, a tarefa existe e devolvemos um aviso.
+// troca o executor da etapa atual. Só devolve sucesso se a tarefa for confirmada no Ekyte: nunca
+// confiamos num id da resposta sem conferir. Se só a troca do executor falhar, devolvemos um aviso.
 export async function createVerificationTask(input: {
   title: string
   description: string
@@ -89,24 +102,47 @@ export async function createVerificationTask(input: {
   executorId: string
   dueDate: string // YYYY-MM-DD
 }): Promise<{ id: number; warning?: string }> {
+  const workspaceId = Number(input.workspaceId)
   const created = (await callTool('create_task', {
     title: input.title,
     description: input.description,
-    workspaceId: Number(input.workspaceId),
+    workspaceId,
     ctcTaskTypeId: await verificationTaskTypeId(),
     currentDueDate: `${input.dueDate}T18:00:00`,
     situation: 10,
     useTaskTypeFlow: 1,
   })) as Obj
-  const raw = created.id ?? created.taskId ?? created.ctcTaskId ?? created.data?.id ?? created.items?.[0]?.id
-  const id = Number(raw)
-  if (!Number.isFinite(id)) throw new Error(`Ekyte criou a tarefa mas não devolveu o id: ${JSON.stringify(created).slice(0, 200)}`)
+
+  // 1) candidatos vindos da resposta; 2) busca pela tarefa recém-criada (workspace + título + hoje)
+  const candidates = [created?.id, created?.taskId, created?.ctcTaskId, created?.data?.id, created?.items?.[0]?.id]
+  let id: number | null = null
+  for (const c of candidates) {
+    if (await taskExists(c, input.title, workspaceId)) {
+      id = Number(c)
+      break
+    }
+  }
+  if (id === null) {
+    const today = new Date().toISOString().slice(0, 10)
+    const found = asList(
+      await callTool('list_tasks', { limit: 20, workspaceId, textSearch: input.title, creationDateStart: `${today}T00:00:00` })
+    ).filter((t) => String(t.title ?? '').trim() === input.title.trim())
+    found.sort((a, b) => String(b.creationDate ?? '').localeCompare(String(a.creationDate ?? '')))
+    if (found[0]) id = Number(found[0].id)
+  }
+  if (id === null) {
+    throw new Error(
+      `Não consegui confirmar a criação da tarefa no Ekyte. Resposta recebida: ${JSON.stringify(created).slice(0, 400)}`
+    )
+  }
 
   try {
     const phases = asList(await callTool('list_task_flow_phases', { taskId: id }))
     const current = phases.find((p) => p.active !== 0 && p.active !== false && !p.concluded) ?? phases[0]
     const phaseId = Number(current?.phase?.id ?? current?.phaseId)
-    if (!Number.isFinite(phaseId)) throw new Error('etapa atual não encontrada')
+    if (!Number.isFinite(phaseId)) {
+      throw new Error(`etapa atual não encontrada (resposta: ${JSON.stringify(phases).slice(0, 300)})`)
+    }
     await callTool('update_task_executor', {
       taskId: id,
       phaseId,
