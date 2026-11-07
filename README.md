@@ -44,9 +44,8 @@ Esquema de Backend, Plano de Implementação).
 | `GOOGLE_OAUTH_REDIRECT_URI` | `<URL_DO_APP>/api/auth/google/callback` — precisa bater exatamente com o redirect URI autorizado no Google Cloud |
 | `GOOGLE_DRIVE_FOLDER_ID` | ID da pasta raiz do Drive onde as reuniões (subpastas) aparecem |
 | `GROQ_API_KEY` | API key da Groq |
-| `EKYTE_BEARER_TOKEN` | JWT do Ekyte (DevTools > Network > header `Authorization`; vale ~6 meses) |
-| `EKYTE_COMPANY_ID` | Número após `/companies/` nas URLs de `api.ekyte.com` |
-| `EKYTE_VERIFICATION_TASK_TYPE_ID` | (opcional) id do tipo de tarefa "Verificação"; vazio = busca pelo nome |
+| `EKYTE_MCP_URL` | URL do MCP do Ekyte já com token (`https://api.ekyte.com/mcp?token=...`) — **segredo, só no backend** |
+| `EKYTE_VERIFICATION_TASK_TYPE_ID` | (opcional) força o tipo de tarefa de verificação; vazio = modelo de nome exato `[verificação]` |
 
 ## Uso
 

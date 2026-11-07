@@ -1,49 +1,49 @@
-// Cliente da API interna do Ekyte (a mesma que o app.ekyte.com usa; não há API pública documentada).
-// Auth: Bearer JWT copiado do navegador. Os formatos de resposta/payload abaixo seguem o que o MCP
-// da Ekyte faz; se algum campo divergir, o erro devolvido pelo Ekyte é repassado na íntegra.
-
-const BASE = 'https://api.ekyte.com'
+// Cliente do Ekyte via endpoint MCP (JSON-RPC sobre HTTP). A URL já traz o token:
+//   EKYTE_MCP_URL=https://api.ekyte.com/mcp?token=...
+// Nunca versionar nem logar essa URL.
 
 export type EkyteOption = { id: string; name: string }
-
-function config() {
-  const token = process.env.EKYTE_BEARER_TOKEN
-  const companyId = process.env.EKYTE_COMPANY_ID
-  if (!token || !companyId) {
-    throw new Error('Ekyte não configurado: defina EKYTE_BEARER_TOKEN e EKYTE_COMPANY_ID.')
-  }
-  return { token, companyId }
-}
-
-async function ekyte(method: 'GET' | 'POST', path: string, body?: unknown): Promise<unknown> {
-  const { token, companyId } = config()
-  const res = await fetch(`${BASE}/api/companies/${companyId}${path}`, {
-    method,
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    cache: 'no-store',
-  })
-  const text = await res.text()
-  if (res.status === 401) throw new Error('Token do Ekyte expirado ou inválido (401). Gere outro no navegador.')
-  if (!res.ok) throw new Error(`Ekyte ${res.status}: ${text.slice(0, 300)}`)
-  try {
-    return text ? JSON.parse(text) : {}
-  } catch {
-    return {}
-  }
-}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Obj = Record<string, any>
 
-function asList(json: unknown): Obj[] {
-  if (Array.isArray(json)) return json as Obj[]
-  const o = (json || {}) as Obj
-  for (const k of ['data', 'items', 'results', 'content']) {
-    if (Array.isArray(o[k])) return o[k]
-    if (o[k] && Array.isArray(o[k].data)) return o[k].data
+async function callTool(name: string, args: Obj = {}): Promise<unknown> {
+  const url = process.env.EKYTE_MCP_URL
+  if (!url) throw new Error('Ekyte não configurado: defina EKYTE_MCP_URL.')
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+    cache: 'no-store',
+  })
+  const text = await res.text()
+  if (res.status === 401 || res.status === 403) throw new Error('Token do Ekyte inválido ou sem permissão.')
+  if (!res.ok) throw new Error(`Ekyte ${res.status}: ${text.slice(0, 300)}`)
+
+  let json: Obj
+  try {
+    json = JSON.parse(text)
+  } catch {
+    throw new Error('Resposta inesperada do Ekyte.')
   }
-  return []
+  if (json.error) throw new Error(`Ekyte (${name}): ${json.error.message || JSON.stringify(json.error)}`)
+
+  const result: Obj = json.result || {}
+  const content = (result.content || []).map((c: Obj) => c.text || '').join('')
+  if (result.isError) throw new Error(`Ekyte (${name}): ${content.slice(0, 300)}`)
+  if (result.structuredContent) return result.structuredContent.items ?? result.structuredContent
+  try {
+    return content ? JSON.parse(content) : {}
+  } catch {
+    return content
+  }
+}
+
+function asList(v: unknown): Obj[] {
+  if (Array.isArray(v)) return v as Obj[]
+  const items = (v as Obj | null)?.items
+  return Array.isArray(items) ? items : []
 }
 
 export function normalize(s: string) {
@@ -51,68 +51,72 @@ export function normalize(s: string) {
 }
 
 export async function listWorkspaces(search?: string): Promise<EkyteOption[]> {
-  const qs = new URLSearchParams()
-  if (search) qs.set('search', search)
-  const list = asList(await ekyte('GET', `/workspaces?${qs}`))
-  return list.map((w) => ({ id: String(w.id), name: String(w.name ?? w.title ?? w.id) }))
+  const list = asList(await callTool('list_short_workspaces', { active: true, ...(search ? { textSearch: search } : {}) }))
+  return list.map((w) => ({ id: String(w.id), name: String(w.name) }))
 }
 
+// Executores possíveis: usuários administradores e editores.
 export async function listUsers(): Promise<EkyteOption[]> {
-  const list = asList(await ekyte('GET', '/users'))
+  const list = asList(await callTool('list_admin_editors_users'))
   return list
-    .map((u) => ({ id: String(u.id ?? u.uuid), name: String(u.name ?? u.fullName ?? u.email ?? '') }))
+    .map((u) => ({ id: String(u.id), name: String(u.userName || u.email || '') }))
     .filter((u) => u.name)
     .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
 }
 
-// Tipo de tarefa "Verificação" (= modelo + workflow). Usa EKYTE_VERIFICATION_TASK_TYPE_ID ou busca pelo nome.
-async function verificationTaskType(): Promise<{ id: string; workflowId: string }> {
-  const list = asList(await ekyte('GET', '/task-types'))
-  const wanted = process.env.EKYTE_VERIFICATION_TASK_TYPE_ID
-  const t = wanted
-    ? list.find((x) => String(x.id) === wanted)
-    : list.find((x) => normalize(String(x.name ?? x.title ?? '')).startsWith('verifica'))
-  if (!t) {
-    throw new Error(
-      wanted
-        ? `Tipo de tarefa ${wanted} não encontrado no Ekyte.`
-        : 'Não achei o tipo de tarefa "Verificação" no Ekyte. Defina EKYTE_VERIFICATION_TASK_TYPE_ID.'
-    )
-  }
-  const workflowId = t.workflowId ?? t.workflow_id ?? t.workflow?.id
-  if (workflowId == null) throw new Error('Tipo de tarefa "Verificação" sem workflow associado.')
-  return { id: String(t.id), workflowId: String(workflowId) }
+// Modelo "[verificação]" (nome exato, sem os colchetes). EKYTE_VERIFICATION_TASK_TYPE_ID força outro tipo.
+// Há dezenas de tipos que apenas começam com "Verificação de…"; esses não servem de modelo genérico.
+async function verificationTaskTypeId(): Promise<number> {
+  const forced = process.env.EKYTE_VERIFICATION_TASK_TYPE_ID
+  if (forced) return Number(forced)
+
+  const list = asList(await callTool('list_task_types_create_task', { textSearch: 'verifica' }))
+  const exact = list.filter((t) => normalize(String(t.name)).replace(/[\[\]]/g, '').trim() === 'verificacao')
+  if (exact.length === 1) return Number(exact[0].id)
+  throw new Error(
+    exact.length === 0
+      ? 'Não achei o modelo "[verificação]" no Ekyte. Defina EKYTE_VERIFICATION_TASK_TYPE_ID.'
+      : 'Há mais de um modelo "verificação" no Ekyte. Defina EKYTE_VERIFICATION_TASK_TYPE_ID.'
+  )
 }
 
-async function firstPhaseId(workflowId: string): Promise<string> {
-  const wf = (await ekyte('GET', `/workflows/${workflowId}`)) as Obj
-  const phases = (wf.phases ?? wf.data?.phases ?? []) as Obj[]
-  const first = [...phases].sort((a, b) => (a.order ?? a.position ?? 0) - (b.order ?? b.position ?? 0))[0]
-  if (!first) throw new Error('Workflow do tipo "Verificação" não tem fases.')
-  return String(first.id)
-}
-
+// Cria a tarefa montando o fluxo pelo modelo (useTaskTypeFlow=1, que não aceita executor) e depois
+// troca o executor da etapa atual. Se só a troca falhar, a tarefa existe e devolvemos um aviso.
 export async function createVerificationTask(input: {
   title: string
-  description?: string
+  description: string
   workspaceId: string
   executorId: string
   dueDate: string // YYYY-MM-DD
-}): Promise<{ id: number }> {
-  const type = await verificationTaskType()
-  const phaseId = await firstPhaseId(type.workflowId)
-  const today = new Date().toISOString().slice(0, 10)
-  const created = (await ekyte('POST', '/ctc-tasks', {
+}): Promise<{ id: number; warning?: string }> {
+  const created = (await callTool('create_task', {
     title: input.title,
-    description: input.description || undefined,
+    description: input.description,
     workspaceId: Number(input.workspaceId),
-    taskTypeId: Number(type.id),
-    executorId: input.executorId,
-    phaseId: Number(phaseId),
-    phaseStartDate: today,
-    phaseDueDate: input.dueDate,
+    ctcTaskTypeId: await verificationTaskTypeId(),
+    currentDueDate: `${input.dueDate}T18:00:00`,
+    situation: 10,
+    useTaskTypeFlow: 1,
   })) as Obj
-  const id = created.id ?? created.data?.id ?? created.taskId
-  if (id == null) throw new Error('Ekyte criou a tarefa mas não devolveu o id.')
-  return { id: Number(id) }
+  const raw = created.id ?? created.taskId ?? created.ctcTaskId ?? created.data?.id ?? created.items?.[0]?.id
+  const id = Number(raw)
+  if (!Number.isFinite(id)) throw new Error(`Ekyte criou a tarefa mas não devolveu o id: ${JSON.stringify(created).slice(0, 200)}`)
+
+  try {
+    const phases = asList(await callTool('list_task_flow_phases', { taskId: id }))
+    const current = phases.find((p) => p.active !== 0 && p.active !== false && !p.concluded) ?? phases[0]
+    const phaseId = Number(current?.phase?.id ?? current?.phaseId)
+    if (!Number.isFinite(phaseId)) throw new Error('etapa atual não encontrada')
+    await callTool('update_task_executor', {
+      taskId: id,
+      phaseId,
+      patchDoc: [{ op: 'replace', path: '/executorId', value: input.executorId }],
+    })
+  } catch (err) {
+    return {
+      id,
+      warning: `Tarefa criada (#${id}), mas não consegui definir o responsável: ${err instanceof Error ? err.message : 'erro'}. Ajuste no Ekyte.`,
+    }
+  }
+  return { id }
 }

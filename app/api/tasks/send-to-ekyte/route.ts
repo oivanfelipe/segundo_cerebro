@@ -56,15 +56,17 @@ export async function POST(req: NextRequest) {
   }
 
   let ekyteId: number
+  let warning: string | undefined
   try {
-    ekyteId = (
-      await createVerificationTask({
-        title,
-        workspaceId: String(client.ekyte_workspace_id),
-        executorId: assigneeId,
-        dueDate,
-      })
-    ).id
+    const created = await createVerificationTask({
+      title,
+      description: `${title}\n\nOrigem: Segundo Cérebro — cliente ${client.name}.`,
+      workspaceId: String(client.ekyte_workspace_id),
+      executorId: assigneeId,
+      dueDate,
+    })
+    ekyteId = created.id
+    warning = created.warning
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Erro ao enviar ao Ekyte.' }, { status: 502 })
   }
@@ -78,5 +80,5 @@ export async function POST(req: NextRequest) {
     await supabase.from('client_meeting_insights').update({ open_items: items }).eq('id', body.insight_id)
   }
 
-  return NextResponse.json({ ok: true, ekyte_task_id: ekyteId })
+  return NextResponse.json({ ok: true, ekyte_task_id: ekyteId, warning })
 }

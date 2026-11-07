@@ -143,7 +143,7 @@ export default function TasksPanel({ clientId, refreshKey = 0 }: { clientId?: st
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'Erro ao enviar ao Ekyte.')
-      setNotice(`Enviada ao Ekyte (#${data.ekyte_task_id}).`)
+      setNotice(data.warning || `Enviada ao Ekyte (#${data.ekyte_task_id}).`)
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao enviar ao Ekyte.')
