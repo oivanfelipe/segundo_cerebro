@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { OWNER_FIELDS } from '@/lib/owners'
+import WorkspacePicker from './WorkspacePicker'
 
 export type ClientFormValues = {
   id?: string
@@ -12,6 +13,8 @@ export type ClientFormValues = {
   social_media: string
   traffic_manager: string
   designer: string
+  ekyte_workspace_id: string
+  ekyte_workspace_name: string
   status: 'active' | 'paused'
 }
 
@@ -25,6 +28,8 @@ export default function ClientForm({ initial }: { initial?: ClientFormValues }) 
       social_media: '',
       traffic_manager: '',
       designer: '',
+      ekyte_workspace_id: '',
+      ekyte_workspace_name: '',
       status: 'active',
     }
   )
@@ -106,6 +111,12 @@ export default function ClientForm({ initial }: { initial?: ClientFormValues }) 
           />
         </Field>
       ))}
+      <WorkspacePicker
+        id={values.ekyte_workspace_id}
+        name={values.ekyte_workspace_name}
+        fallbackSearch={values.name}
+        onChange={(id, name) => setValues((v) => ({ ...v, ekyte_workspace_id: id, ekyte_workspace_name: name }))}
+      />
       <Field label="Status">
         <select
           value={values.status}

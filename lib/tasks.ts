@@ -1,7 +1,7 @@
 import { supabase, type OpenItem } from '@/lib/supabase'
 import type { Owners } from '@/lib/owners'
 
-export type TaskClient = ({ id: string; name: string } & Owners) | null
+export type TaskClient = ({ id: string; name: string; ekyte_workspace_id?: number | null } & Owners) | null
 
 // Tarefa unificada: pendência extraída de reunião (vive dentro do insight) ou tarefa manual.
 export type Task = {
@@ -12,6 +12,10 @@ export type Task = {
   done_at: string | null
   date: string | null // data da reunião (YYYY-MM-DD) ou data da tarefa manual
   client: TaskClient
+  assignee_id?: string | null
+  assignee_name?: string | null
+  ekyte_task_id?: number | null
+  ekyte_sent_at?: string | null
   // só reunião
   insight_id?: string
   index?: number
@@ -23,7 +27,7 @@ export type Task = {
 
 export type TaskStatus = 'open' | 'done' | 'all'
 
-const CLIENT_COLS = 'id, name, account_manager, social_media, traffic_manager, designer'
+const CLIENT_COLS = 'id, name, ekyte_workspace_id, account_manager, social_media, traffic_manager, designer'
 
 // Lista unificada de tarefas: pendências das reuniões + tarefas manuais.
 export async function listTasks(
@@ -57,6 +61,10 @@ export async function listTasks(
         done_at: item.done_at ?? null,
         date: meeting?.meeting_date ?? null,
         client: client ?? null,
+        assignee_id: item.assignee_id ?? null,
+        assignee_name: item.assignee_name ?? null,
+        ekyte_task_id: item.ekyte_task_id ?? null,
+        ekyte_sent_at: item.ekyte_sent_at ?? null,
         insight_id: insight.id,
         index,
         meeting_id: meeting?.id ?? null,
@@ -76,6 +84,10 @@ export async function listTasks(
       date: t.task_date,
       client: client ?? null,
       id: t.id,
+      assignee_id: t.assignee_id ?? null,
+      assignee_name: t.assignee_name ?? null,
+      ekyte_task_id: t.ekyte_task_id ?? null,
+      ekyte_sent_at: t.ekyte_sent_at ?? null,
     })
   }
 

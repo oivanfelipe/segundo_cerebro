@@ -21,6 +21,8 @@ export default async function EditClientPage({ params }: { params: { id: string 
           social_media: client.social_media || '',
           traffic_manager: client.traffic_manager || '',
           designer: client.designer || '',
+          ekyte_workspace_id: client.ekyte_workspace_id ? String(client.ekyte_workspace_id) : '',
+          ekyte_workspace_name: client.ekyte_workspace_name || '',
           status: client.status,
         }}
       />

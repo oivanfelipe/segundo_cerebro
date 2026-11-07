@@ -54,6 +54,10 @@ export type OpenItem = {
   text: string
   done: boolean
   done_at: string | null
+  assignee_id?: string | null
+  assignee_name?: string | null
+  ekyte_task_id?: number | null
+  ekyte_sent_at?: string | null
 }
 
 export type ClientMeetingInsight = {

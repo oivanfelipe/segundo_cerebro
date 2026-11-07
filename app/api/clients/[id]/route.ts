@@ -19,6 +19,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   for (const key of ['account_manager', 'social_media', 'traffic_manager', 'designer']) {
     if (key in body) update[key] = typeof body[key] === 'string' && body[key].trim() ? body[key].trim() : null
   }
+  if ('ekyte_workspace_id' in body) {
+    const n = Number(body.ekyte_workspace_id)
+    update.ekyte_workspace_id = body.ekyte_workspace_id && Number.isInteger(n) ? n : null
+    update.ekyte_workspace_name = update.ekyte_workspace_id ? body.ekyte_workspace_name || null : null
+  }
   if (body.status === 'active' || body.status === 'paused') update.status = body.status
 
   const { data, error } = await supabase
