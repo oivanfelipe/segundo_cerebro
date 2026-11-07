@@ -66,13 +66,14 @@ export async function listUsers(): Promise<EkyteOption[]> {
 
 // Modelo "[verificação]" (nome exato, sem os colchetes). EKYTE_VERIFICATION_TASK_TYPE_ID força outro tipo.
 // Há dezenas de tipos que apenas começam com "Verificação de…"; esses não servem de modelo genérico.
-async function verificationTaskTypeId(): Promise<number> {
+// Devolve também o allocationType do tipo (10 = ágil, 20 = por etapa), que a criação precisa repetir.
+async function verificationTaskType(): Promise<{ id: number; allocationType: number }> {
   const forced = process.env.EKYTE_VERIFICATION_TASK_TYPE_ID
-  if (forced) return Number(forced)
-
-  const list = asList(await callTool('list_task_types_create_task', { textSearch: 'verifica' }))
-  const exact = list.filter((t) => normalize(String(t.name)).replace(/[\[\]]/g, '').trim() === 'verificacao')
-  if (exact.length === 1) return Number(exact[0].id)
+  const list = asList(await callTool('list_task_types_create_task', { textSearch: forced ? undefined : 'verifica' }))
+  const exact = forced
+    ? list.filter((t) => String(t.id) === forced)
+    : list.filter((t) => normalize(String(t.name)).replace(/[\[\]]/g, '').trim() === 'verificacao')
+  if (exact.length === 1) return { id: Number(exact[0].id), allocationType: Number(exact[0].allocationType) || 10 }
   throw new Error(
     exact.length === 0
       ? 'Não achei o modelo "[verificação]" no Ekyte. Defina EKYTE_VERIFICATION_TASK_TYPE_ID.'
@@ -103,14 +104,21 @@ export async function createVerificationTask(input: {
   dueDate: string // YYYY-MM-DD
 }): Promise<{ id: number; warning?: string }> {
   const workspaceId = Number(input.workspaceId)
+  const type = await verificationTaskType()
+  const today = new Date().toISOString().slice(0, 10)
   const created = (await callTool('create_task', {
     title: input.title,
     description: input.description,
     workspaceId,
-    ctcTaskTypeId: await verificationTaskTypeId(),
+    ctcTaskTypeId: type.id,
     currentDueDate: `${input.dueDate}T18:00:00`,
     situation: 10,
     useTaskTypeFlow: 1,
+    // Segue o tipo de tarefa: por etapa (20) pede phaseStartDate; ágil (10) pede phaseDueDate.
+    allocationType: type.allocationType,
+    ...(type.allocationType === 20
+      ? { phaseStartDate: `${today}T09:00:00` }
+      : { phaseDueDate: `${input.dueDate}T18:00:00` }),
   })) as Obj
 
   // 1) candidatos vindos da resposta; 2) busca pela tarefa recém-criada (workspace + título + hoje)
@@ -131,6 +139,8 @@ export async function createVerificationTask(input: {
     if (found[0]) id = Number(found[0].id)
   }
   if (id === null) {
+    // o Ekyte costuma explicar a recusa em "text" (ex.: campo obrigatório faltando)
+    if (typeof created?.text === 'string') throw new Error(`Ekyte recusou a criação: ${created.text}`)
     throw new Error(
       `Não consegui confirmar a criação da tarefa no Ekyte. Resposta recebida: ${JSON.stringify(created).slice(0, 400)}`
     )
