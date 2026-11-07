@@ -13,6 +13,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     update.done_at = body.done ? new Date().toISOString() : null
   }
   if (typeof body.title === 'string' && body.title.trim()) update.title = body.title.trim()
+  if ('assignee_id' in body) {
+    update.assignee_id = body.assignee_id || null
+    update.assignee_name = body.assignee_id ? body.assignee_name || null : null
+  }
   if ('client_id' in body) update.client_id = body.client_id || null
   if (typeof body.task_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.task_date)) {
     update.task_date = body.task_date

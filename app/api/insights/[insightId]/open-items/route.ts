@@ -41,7 +41,6 @@ export async function DELETE(req: NextRequest, { params }: { params: { insightId
 export async function PATCH(req: NextRequest, { params }: { params: { insightId: string } }) {
   const body = await req.json()
   const index = Number(body.index)
-  const done = Boolean(body.done)
 
   if (!Number.isInteger(index) || index < 0) {
     return NextResponse.json({ error: 'Índice da pendência inválido.' }, { status: 400 })
@@ -62,7 +61,17 @@ export async function PATCH(req: NextRequest, { params }: { params: { insightId:
     return NextResponse.json({ error: 'Pendência não encontrada.' }, { status: 404 })
   }
 
-  items[index] = { ...items[index], done, done_at: done ? new Date().toISOString() : null }
+  const next = { ...items[index] }
+  if (typeof body.done === 'boolean') {
+    next.done = body.done
+    next.done_at = body.done ? new Date().toISOString() : null
+  }
+  if (typeof body.text === 'string' && body.text.trim()) next.text = body.text.trim()
+  if ('assignee_id' in body) {
+    next.assignee_id = body.assignee_id || null
+    next.assignee_name = body.assignee_id ? body.assignee_name || null : null
+  }
+  items[index] = next
 
   const { error: updateError } = await supabase
     .from('client_meeting_insights')

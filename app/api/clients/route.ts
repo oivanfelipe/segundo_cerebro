@@ -29,6 +29,8 @@ export async function POST(req: NextRequest) {
       social_media: body.social_media?.trim() || null,
       traffic_manager: body.traffic_manager?.trim() || null,
       designer: body.designer?.trim() || null,
+      ekyte_workspace_id: Number.isInteger(Number(body.ekyte_workspace_id)) && body.ekyte_workspace_id ? Number(body.ekyte_workspace_id) : null,
+      ekyte_workspace_name: body.ekyte_workspace_id ? body.ekyte_workspace_name || null : null,
       status: body.status === 'paused' ? 'paused' : 'active',
     })
     .select()
