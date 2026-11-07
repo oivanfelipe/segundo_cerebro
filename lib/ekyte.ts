@@ -51,7 +51,7 @@ export function normalize(s: string) {
 }
 
 export async function listWorkspaces(search?: string): Promise<EkyteOption[]> {
-  const list = asList(await callTool('list_short_workspaces', { active: true, ...(search ? { textSearch: search } : {}) }))
+  const list = asList(await callTool('list_short_workspaces', { active: 1, ...(search ? { textSearch: search, textKey: 20 } : {}) }))
   return list.map((w) => ({ id: String(w.id), name: String(w.name) }))
 }
 
