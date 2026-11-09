@@ -113,24 +113,24 @@ main a:not(.btn):hover { color: var(--blue); }
 .btn-primary {
   background: var(--yellow);
   color: var(--yellow-ink);
-  box-shadow: 4px 4px 0 var(--blue);
+  box-shadow: 4px 4px 0 var(--ink);
 }
-.btn-primary:hover:not(:disabled) { transform: translate(-1px, -1px); box-shadow: 5px 5px 0 var(--blue); }
+.btn-primary:hover:not(:disabled) { transform: translate(-1px, -1px); box-shadow: 5px 5px 0 var(--ink); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-secondary {
   background: var(--white);
   color: var(--ink);
-  box-shadow: 4px 4px 0 var(--yellow);
+  box-shadow: 4px 4px 0 var(--ink);
 }
-.btn-secondary:hover:not(:disabled) { transform: translate(-1px, -1px); box-shadow: 5px 5px 0 var(--yellow); }
+.btn-secondary:hover:not(:disabled) { transform: translate(-1px, -1px); box-shadow: 5px 5px 0 var(--ink); }
 
 .btn-blue {
   background: var(--blue);
   color: var(--white);
-  box-shadow: 4px 4px 0 var(--yellow);
+  box-shadow: 4px 4px 0 var(--ink);
 }
-.btn-blue:hover:not(:disabled) { transform: translate(-1px, -1px); box-shadow: 5px 5px 0 var(--yellow); }
+.btn-blue:hover:not(:disabled) { transform: translate(-1px, -1px); box-shadow: 5px 5px 0 var(--ink); }
 .btn-blue:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .btn-success {
