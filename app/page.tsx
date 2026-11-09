@@ -104,7 +104,7 @@ export default function Dashboard() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-8)' }}>
       <div className="row-wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--sp-4)' }}>
         <h1>DASHBOARD</h1>
-        <button className="btn btn-primary" onClick={runSync} disabled={syncing}>
+        <button className="btn btn-blue" onClick={runSync} disabled={syncing}>
           {syncing ? 'SINCRONIZANDO…' : 'SINCRONIZAR AGORA'}
         </button>
       </div>

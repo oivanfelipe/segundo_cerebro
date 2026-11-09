@@ -135,7 +135,7 @@ export default function ClientForm({ initial }: { initial?: ClientFormValues }) 
           {saving ? 'SALVANDO…' : 'SALVAR CLIENTE'}
         </button>
         {values.id && (
-          <button className="btn btn-secondary" onClick={remove} disabled={saving || deleting}>
+          <button className="btn btn-danger" onClick={remove} disabled={saving || deleting}>
             {deleting ? 'EXCLUINDO…' : 'EXCLUIR CLIENTE'}
           </button>
         )}

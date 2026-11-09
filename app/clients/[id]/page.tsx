@@ -80,7 +80,7 @@ export default function ClientCompiledPage() {
           </div>
           {client.contact && <p style={{ color: 'var(--muted)', marginTop: 'var(--sp-2)' }}>{client.contact}</p>}
         </div>
-        <Link href={`/clients/${client.id}/edit`} className="btn btn-secondary">
+        <Link href={`/clients/${client.id}/edit`} className="btn btn-blue">
           EDITAR
         </Link>
       </div>

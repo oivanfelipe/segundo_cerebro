@@ -152,6 +152,35 @@ export default function TasksPanel({ clientId, refreshKey = 0 }: { clientId?: st
     }
   }
 
+  // Direciona a tarefa a um cliente quando ela veio sem cliente.
+  // Tarefa manual: atualiza a própria tarefa. Tarefa de reunião: reatribui o vínculo da reunião
+  // (vale para todas as pendências desse mesmo vínculo).
+  async function assignClient(task: Task, clientId: string) {
+    if (!clientId) return
+    setBusyKey(task.key)
+    setError(null)
+    try {
+      const res =
+        task.source === 'manual'
+          ? await fetch(`/api/tasks/${task.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ client_id: clientId }),
+            })
+          : await fetch(`/api/meetings/${task.meeting_id}/insights/${task.insight_id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ client_id: clientId }),
+            })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Erro ao direcionar o cliente.')
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao direcionar o cliente.')
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
   async function remove(task: Task) {
     if (!window.confirm(`Excluir a tarefa "${task.title}"?`)) return
     setBusyKey(task.key)
@@ -263,7 +292,7 @@ export default function TasksPanel({ clientId, refreshKey = 0 }: { clientId?: st
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
         {open.map((t) => (
-          <TaskRow key={t.key} task={t} showClient={!clientId} busy={busyKey === t.key} onToggle={toggle} onRemove={remove} onSave={save} onSend={sendToEkyte} users={users} usersError={usersError} ensureUsers={ensureUsers} />
+          <TaskRow key={t.key} task={t} showClient={!clientId} busy={busyKey === t.key} onToggle={toggle} onRemove={remove} onSave={save} onSend={sendToEkyte} clients={clients} onAssignClient={assignClient} users={users} usersError={usersError} ensureUsers={ensureUsers} />
         ))}
       </div>
 
@@ -271,7 +300,7 @@ export default function TasksPanel({ clientId, refreshKey = 0 }: { clientId?: st
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', marginTop: 'var(--sp-2)' }}>
           <h3>BACKLOG — CONCLUÍDAS ({done.length})</h3>
           {done.map((t) => (
-            <TaskRow key={t.key} task={t} showClient={false} busy={busyKey === t.key} onToggle={toggle} onRemove={remove} onSave={save} onSend={sendToEkyte} users={users} usersError={usersError} ensureUsers={ensureUsers} />
+            <TaskRow key={t.key} task={t} showClient={false} busy={busyKey === t.key} onToggle={toggle} onRemove={remove} onSave={save} onSend={sendToEkyte} clients={clients} onAssignClient={assignClient} users={users} usersError={usersError} ensureUsers={ensureUsers} />
           ))}
         </div>
       )}
@@ -287,6 +316,8 @@ function TaskRow({
   onRemove,
   onSave,
   onSend,
+  clients,
+  onAssignClient,
   users,
   usersError,
   ensureUsers,
@@ -298,6 +329,8 @@ function TaskRow({
   onRemove: (t: Task) => void
   onSave: (t: Task, patch: { title: string; assignee: EkyteUser | null }) => Promise<void>
   onSend: (t: Task) => void
+  clients: ClientOption[]
+  onAssignClient: (t: Task, clientId: string) => void
   users: EkyteUser[] | null
   usersError: string | null
   ensureUsers: () => Promise<void>
@@ -388,7 +421,25 @@ function TaskRow({
                 {task.client.name}
               </Link>
             ) : (
-              <span className="tag">SEM CLIENTE</span>
+              <>
+                <span className="tag">SEM CLIENTE</span>
+                {clients.length > 0 && (task.source === 'manual' || task.meeting_id) && (
+                  <select
+                    value=""
+                    disabled={busy}
+                    onChange={(e) => onAssignClient(task, e.target.value)}
+                    aria-label="Direcionar a um cliente"
+                    style={{ minHeight: 0, padding: '2px var(--sp-2)', fontSize: 12, maxWidth: 200, borderColor: 'var(--blue)', color: 'var(--blue)', fontWeight: 600 }}
+                  >
+                    <option value="">Direcionar cliente…</option>
+                    {clients.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </>
             ))}
           <span>{formatDateBR(task.date)}</span>
           <span>·</span>
@@ -412,7 +463,7 @@ function TaskRow({
           ) : (
             !task.done && (
               <button
-                className="btn btn-secondary"
+                className="btn btn-blue"
                 onClick={() => onSend(task)}
                 disabled={busy || editing || !task.assignee_id || !task.client?.ekyte_workspace_id}
                 title={
@@ -437,7 +488,7 @@ function TaskRow({
           disabled={busy}
           aria-label="Editar tarefa"
           title="Editar texto e responsável"
-          style={{ background: 'none', border: 'none', fontSize: 18, lineHeight: 1, color: 'var(--muted)', minHeight: 44, minWidth: 32, padding: 4 }}
+          style={{ background: 'none', border: 'none', fontSize: 18, lineHeight: 1, color: 'var(--blue)', minHeight: 44, minWidth: 32, padding: 4 }}
         >
           ✎
         </button>
@@ -447,7 +498,7 @@ function TaskRow({
         disabled={busy}
         aria-label="Excluir tarefa"
         title="Excluir tarefa"
-        style={{ background: 'none', border: 'none', fontSize: 20, lineHeight: 1, color: 'var(--muted)', minHeight: 44, minWidth: 32, padding: 4 }}
+        style={{ background: 'none', border: 'none', fontSize: 20, lineHeight: 1, color: '#B91C1C', fontWeight: 700, minHeight: 44, minWidth: 32, padding: 4 }}
       >
         ×
       </button>
